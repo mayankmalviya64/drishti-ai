@@ -5,21 +5,386 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Drishti AI</title>
 <style>
-  /* Simple centered page: title, a section label, a divider, and a footer note */
-  body { margin: 0; font-family: system-ui, sans-serif; background: #0f1115; color: #e8eaed; line-height: 1.6; }
-  main { max-width: 720px; margin: 0 auto; padding: 64px 16px; }
-  h1 { font-size: 2.4rem; margin: 0 0 8px; }
-  h2 { font-size: 1.1rem; font-weight: 500; color: #9aa0a6; margin: 0 0 24px; }
-  hr { border: 0; border-top: 1px solid #2a2e36; margin: 32px 0; }
-  p.note { color: #9aa0a6; font-size: 0.95rem; }
+  /* ---------- Colours and basic page look ---------- */
+  :root {
+    --bg:#0f1115; --card:#171a21; --line:#2a2e36; --text:#e8eaed; --muted:#9aa0a6;
+    --teal:#2dd4bf; --grey:#8b93a1; --green:#34d399; --amber:#fbbf24; --red:#f87171;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,sans-serif; }
+  main { max-width:1180px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:2rem; margin:0; }
+  h2 { font-size:1rem; margin:0 0 10px; color:var(--muted); font-weight:600; letter-spacing:.03em; text-transform:uppercase; }
+  .tag { color:var(--muted); margin:4px 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .grid { display:grid; gap:16px; }
+  @media (min-width:900px){ .two { grid-template-columns:1.6fr 1fr; } }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  button, select { background:#222733; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--teal); }
+  button.on { border-color:var(--teal); background:#12332f; }
+  .scen { flex:1 1 170px; text-align:left; }
+  .scen small { display:block; color:var(--muted); font-size:.78rem; }
+  /* headline number tiles */
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .tile b { display:block; font-size:1.6rem; }
+  .tile span { color:var(--muted); font-size:.8rem; }
+  .teal { color:var(--teal); } .grey { color:var(--grey); }
+  .pill { display:inline-block; padding:2px 10px; border-radius:99px; font-weight:600; font-size:.85rem; }
+  .Green { background:#0f3a2a; color:var(--green); } .Amber { background:#4a3a0a; color:var(--amber); } .Red { background:#4a1a1a; color:var(--red); }
+  /* agent rows */
+  details { border-top:1px solid var(--line); padding:8px 0; }
+  summary { cursor:pointer; display:flex; gap:10px; align-items:center; }
+  .bar { flex:1; height:8px; background:#222733; border-radius:4px; overflow:hidden; }
+  .bar i { display:block; height:100%; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; margin-top:6px; }
+  td { padding:3px 4px; color:var(--muted); } td:nth-child(2),td:nth-child(3){ color:var(--text); text-align:right; }
+  /* decision log */
+  #log { max-height:420px; overflow:auto; font-size:.85rem; }
+  .entry { padding:6px 0; border-top:1px solid var(--line); }
+  .entry em { font-style:normal; font-weight:700; margin-right:6px; }
+  .entry time { color:var(--muted); margin-right:6px; }
+  .BAU em { color:var(--grey); }
+  .note { color:var(--muted); font-size:.85rem; margin-top:24px; }
+  .alloc div { display:flex; height:16px; border-radius:4px; overflow:hidden; margin:4px 0 10px; }
+  .alloc span { font-size:.7rem; text-align:center; color:#0f1115; line-height:16px; }
+  svg text { fill:var(--muted); font-size:11px; }
 </style>
 </head>
 <body>
 <main>
   <h1>Drishti AI</h1>
-  <h2>Demo scenarios</h2>
-  <hr>
+  <p class="tag">See every ad leak before it costs you. Five agents watch Meta, Google and OTT every hour, fix what leaks money, and grade themselves.</p>
+
+  <!-- ===== Controls: brand, scenario, play/pause ===== -->
+  <section class="card">
+    <h2>Demo scenarios</h2>
+    <div class="row" id="scenBtns"></div>
+    <div class="row" style="margin-top:12px">
+      <label>Brand <select id="brand"></select></label>
+      <button id="play">Pause</button>
+      <button id="step">+1 hour</button>
+      <label>Speed <select id="speed">
+        <option value="400">Slow</option><option value="120" selected>Normal</option><option value="30">Fast</option>
+      </select></label>
+      <button id="reset">Restart</button>
+      <span id="clock" class="grey"></span>
+    </div>
+    <p id="scenDesc" class="grey" style="margin:10px 0 0"></p>
+  </section>
+
+  <!-- ===== Headline numbers ===== -->
+  <section class="tiles" style="margin-top:16px" id="tiles"></section>
+
+  <div class="grid two" style="margin-top:16px">
+    <div class="grid">
+      <section class="card"><h2>True ROAS, trailing 24 hours</h2><div id="chart"></div>
+        <div class="row" style="font-size:.85rem"><span class="teal">&#9632; Drishti AI half</span><span class="grey">&#9632; Business as usual half</span><span class="grey">Shaded = scenario event</span></div></section>
+      <section class="card"><h2>Agent Health Index</h2><div id="ahi"></div><div id="agents"></div></section>
+      <section class="card alloc"><h2>Where the money sits</h2><div id="alloc"></div></section>
+    </div>
+    <section class="card"><h2>Decision log</h2><div id="shock"></div><div id="log"></div></section>
+  </div>
+
   <p class="note">Prototype for Abhikalp 2026 (Case 5). Example data for fictional brands; the market, both holdout halves and every agent decision are computed live in your browser each simulated hour. Production connects to the Meta Marketing API, Google Ads API, Shopify Admin API and an LLM with tool use for the reasoning layer.</p>
 </main>
+
+<script>
+/* =====================================================================
+   Drishti AI simulator. Everything below runs in your browser.
+   Idea: one market, two identical halves.
+     - "Business as usual" (control): humans check dashboards once a day.
+     - "Drishti AI": five agents act every simulated hour.
+   Both halves see the SAME market and the SAME random noise, so any
+   difference between them comes only from the agents.
+   ===================================================================== */
+
+// ---------- Fixed settings ----------
+const CH = ['Meta','Google','OTT'];                 // the three ad platforms
+const BASE_ROAS = [2.8, 3.4, 1.8];                  // true ROAS of each platform at its starting budget
+const SHARE0 = [0.55, 0.35, 0.10];                  // starting budget split
+const CURVE = 0.65;                                 // diminishing returns: revenue ~ spend^0.65
+const POCKET = 0.20, POCKET_ROAS = 0.35;            // 20% of spend sits in a cohort earning only 0.35x
+const WIN_FACTOR = (1 - POCKET*POCKET_ROAS) / (1 - POCKET); // other cohorts earn more, so average ROAS is unchanged
+const COHORTS = ['Women 35-44, Tier-3 towns, Reels','Broad match on the Display network','Late-night regional CTV slots'];
+const COL = ['#60a5fa','#fbbf24','#c084fc'];        // channel colours
+const BRANDS = {
+  glow:  { name:'Glowkart (personal care)', month:15000000 },
+  mandi: { name:'Masala Mandi (spices)',    month:6000000 },
+  snack: { name:'Snackwala (snacks, SME)',  month:900000 }
+};
+const SCEN = {
+  normal:   { name:'Normal week',      sub:'No surprises',                 desc:'A calm week. Shows the steady gap between hourly agents and a once-a-day human review.', events:[] },
+  fatigue:  { name:'Fatigue wave',     sub:'Ads wear out 2.5x faster',     desc:'From hour 30 every creative fatigues much faster. Watch P2 flag early and P3 become the bottleneck (Amber).', events:[{from:30,to:168,kind:'fatigue',label:'Fatigue wave'}] },
+  tracking: { name:'Tracking break',   sub:'Pixel / Conversions API fails', desc:'Hours 48-72: platform tracking breaks. Humans misread it as weak Meta ads and cut budget. Drishti trips the Data Trust gate and freezes.', events:[{from:48,to:72,kind:'tracking',label:'Tracking break'}] },
+  shock:    { name:'Market shock',     sub:'Breaking-news demand crash',   desc:'Hours 48-72: demand falls 35% everywhere. The shock filter proves it is the market, enters Storm Mode and does not blame the agents.', events:[{from:48,to:72,kind:'shock',label:'Market shock'}] },
+  ipl:      { name:'IPL final night',  sub:'Demand spike on Meta + OTT',   desc:'Hours 60-66: a pre-loaded moment trigger. Drishti shifts budget within the hour; the human team cannot.', events:[{from:60,to:66,kind:'ipl',label:'IPL final'}] }
+};
+const END_HOUR = 168; // one simulated week
+
+// ---------- Small helpers ----------
+const $ = id => document.getElementById(id);
+function rng(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const clamp = (x,a,b) => Math.max(a, Math.min(b, x));
+const sum = a => a.reduce((x,y)=>x+y,0);
+const last = (a,n) => a.slice(-n);
+function inr(n){ return n>=1e7 ? '₹'+(n/1e7).toFixed(2)+' Cr' : n>=1e5 ? '₹'+(n/1e5).toFixed(1)+' L' : '₹'+Math.round(n).toLocaleString('en-IN'); }
+// Creative freshness: 1.0 while new, then declines. "Fatigued" means freshness below 0.8.
+function freshness(ad){ return ad.age < ad.L0 ? 1 : Math.max(0.4, 1 - (ad.age - ad.L0)/160); }
+
+// ---------- Simulation state ----------
+let S, timer = null, scenKey = 'normal', brandKey = 'glow', playing = true;
+
+function newHalf(proto){
+  // deep copy so both halves start with identical ads
+  return { share:[...SHARE0], l:[POCKET,POCKET,POCKET], spendMult:1,
+    ads: proto.map(ch => ch.map(a => ({...a}))),
+    spendH:[], revH:[], fatH:[] };
+}
+function reset(){
+  const r = rng(7);
+  const proto = CH.map(()=>[0,1,2].map(()=>({age:r()*50, L0:50+r()*40, due:null, flagged:false, below:null, flaggedAt:null})));
+  S = { t:0, r:rng(42), C:newHalf(proto), D:newHalf(proto), log:[], hist:[],
+        queue:[], jobs:[], lagSamples:[], refreshSamples:[], diag:[null,null,null], lastLogShare:[...SHARE0],
+        storm:false, shockSeen:null, redState:[false,false,false,false,false], iplLogged:false,
+        ctrlRestoreAt:null, trackingLogged:false, gateLogged:false, cumRevC:0, cumRevD:0, cumFatC:0, cumFatD:0 };
+  log('Orch','Simulation started. Both halves begin with identical budgets and ads. Agents are warming up.');
+  for (let i=0;i<24;i++) tick(true); // pre-run day 1 so the dashboard has numbers straight away
+  render();
+}
+function log(who, text){ S.log.unshift({t:S.t, who, text}); if (S.log.length>80) S.log.pop(); }
+
+// ---------- The world at a given hour (same for both halves) ----------
+function envAt(t){
+  const ev = SCEN[scenKey].events[0];
+  const on = ev && t>=ev.from && t<ev.to;
+  return { kind: on ? ev.kind : null, start: ev ? ev.from : null,
+    M: on && ev.kind==='shock' ? 0.65 : 1,                                   // overall demand multiplier
+    d: CH.map((c,i)=> on && ev.kind==='ipl' && i!==1 ? 1.5 : 1),             // per-channel demand multiplier
+    ageSpeed: ev && ev.kind==='fatigue' && t>=ev.from ? 2.5 : 1,             // how fast ads wear out
+    tracking: !!(on && ev.kind==='tracking'), shock: !!(on && ev.kind==='shock') };
+}
+
+// ---------- Money model for one half in one hour ----------
+function econ(H, env, noise, diur){
+  let spend=0, rev=0, fat=0;
+  for (let c=0;c<3;c++){
+    const s0 = BASE_S()*SHARE0[c], s = BASE_S()*H.share[c]*H.spendMult;
+    const f = sum(H.ads[c].map(freshness))/3;                              // average freshness of the channel's 3 ads
+    const fatFrac = H.ads[c].filter(a=>freshness(a)<0.8).length/3;          // share of ads that are fatigued
+    const cohort = (1-H.l[c])*WIN_FACTOR + H.l[c]*POCKET_ROAS;              // fewer losing cohorts = more revenue
+    rev  += BASE_ROAS[c]*s0*Math.pow(s/s0, CURVE) * env.d[c]*env.M*noise[c]*diur * f * cohort;
+    spend += s; fat += s*fatFrac;
+  }
+  H.spendH.push(spend); H.revH.push(rev); H.fatH.push(fat);
+}
+const BASE_S = () => BRANDS[brandKey].month/720; // hourly budget (30-day month)
+
+// ---------- One simulated hour ----------
+function tick(silent){
+  const t = S.t, env = envAt(t), {C,D} = S;
+  const noise = CH.map(()=> 1 + 0.04*(S.r()+S.r()+S.r()-1.5));             // shared random wobble
+  const diur = 1 + 0.15*Math.sin((t%24-14)/24*2*Math.PI);                  // evening peak
+
+  // 1) finish any ad replacements that are due, then age every ad
+  for (const [H,isD] of [[C,false],[D,true]]) for (let c=0;c<3;c++) for (const ad of H.ads[c]){
+    if (ad.due!==null && t>=ad.due){
+      if (isD) { S.refreshSamples.push(t-ad.flaggedAt); log('P3',`${CH[c]}: new ad live (${t-ad.flaggedAt}h after the fatigue flag). Brand-kit and ASCI checks passed.`); }
+      Object.assign(ad,{age:0, L0:50+S.r()*40, due:null, flagged:false, below:null, flaggedAt:null});
+    }
+    ad.age += env.ageSpeed;
+    if (freshness(ad)<0.92 && ad.below===null) ad.below=t;
+  }
+
+  // 2) the Data Trust gate (P1): tracking breaks at event start, P1 detects after 2h and fixes after 8h
+  const trackOn = env.tracking && t < env.start+8;
+  const gateOpen = !(env.tracking && t>=env.start+2 && t<env.start+8);
+  if (env.tracking && t===env.start+2) log('P1','Reconciliation gap: platform conversions are 38% below backend orders. Data Trust gate CLOSED. All automatic actions paused.');
+  if (env.tracking && t===env.start+8) log('P1','Conversions API events re-sent and reconciled (gap back to 2.5%). Gate OPEN, agents resume.');
+  S.trackOn = trackOn; S.gateOpen = gateOpen;
+
+  // 3) Business as usual: one human review a day at 10:00
+  if (t>0 && t%24===10){
+    let n=0; for (let c=0;c<3;c++) for (const ad of C.ads[c]) if (freshness(ad)<0.8 && ad.due===null){ ad.due=t+48; n++; }
+    if (n) log('BAU',`Daily review: ${n} dead ad(s) spotted. Designer briefed, new ads ready in about 48 hours.`);
+    if (env.tracking && S.ctrlRestoreAt===null){
+      C.share = [SHARE0[0]*0.7, SHARE0[1]+SHARE0[0]*0.3, SHARE0[2]]; S.ctrlRestoreAt = t+48;
+      log('BAU','Meta looks weak in the dashboard, so budget is cut by 30%. (It was a tracking bug, not weak ads.)');
+    }
+  }
+  if (S.ctrlRestoreAt!==null && t>=S.ctrlRestoreAt){ C.share=[...SHARE0]; S.ctrlRestoreAt=null; log('BAU','Meta budget restored after two days.'); }
+
+  // 4) Drishti AI agents (only when the gate is open)
+  if (gateOpen) drishtiAgents(env, t);
+  else if (!S.gateLogged) { S.gateLogged = true; }
+
+  // 5) compute money for both halves
+  econ(C, env, noise, diur); econ(D, env, noise, diur);
+  S.cumRevC+=C.revH.at(-1); S.cumRevD+=D.revH.at(-1); S.cumFatC+=C.fatH.at(-1); S.cumFatD+=D.fatH.at(-1);
+  const w=24, rc=sum(last(C.revH,w))/sum(last(C.spendH,w)), rd=sum(last(D.revH,w))/sum(last(D.spendH,w));
+  S.hist.push({t, rc, rd});
+  S.t++;
+  if (!silent) render();
+}
+
+// ---------- The five agents ----------
+function drishtiAgents(env, t){
+  const D = S.D;
+
+  // Orchestrator: external-shock filter and Storm Mode
+  if (env.shock && t>=env.start+2 && !S.storm){
+    S.storm = true; D.spendMult = 0.85; S.shockSeen = { t, M:env.M };
+    log('Orch','MARKET SHOCK tagged (5 of 5 checks). Storm Mode on: spend capped at 85%, no scale-ups. Agents are not penalised because scores are lift vs control.');
+  }
+  if (!env.shock && S.storm){ S.storm=false; D.spendMult=1; S.shockSeen=null; log('Orch','Market recovered. Storm Mode off.'); }
+
+  // P2 Fatigue Sentinel: flag ads early (predictive), then P3 builds replacements
+  for (let c=0;c<3;c++) D.ads[c].forEach((ad,i)=>{
+    if (!ad.flagged && ad.due===null && freshness(ad)<0.92){
+      ad.flagged=true; ad.flaggedAt=t; S.lagSamples.push(Math.max(1,t-ad.below));
+      S.queue.push({ad,c});
+      log('P2',`${CH[c]} ad #${i+1}: fatigue score ${(1-freshness(ad)).toFixed(2)}. Root-cause check ruled out tracking, competitor and season. Replacement requested from P3.`);
+    }
+  });
+  // P3 Creative Studio: up to 2 ten-hour jobs at once (regional + English variants from the top winner)
+  S.jobs = S.jobs.filter(j => j.ad.due!==null);   // a finished job has 'due' cleared by the ad swap at the top of tick()
+  while (S.jobs.length<2 && S.queue.length){
+    S.queue.sort((a,b)=>freshness(a.ad)-freshness(b.ad));   // most fatigued ad first
+    const job = S.queue.shift(); job.ad.due = t+10; S.jobs.push(job);
+    log('P3',`Brief built from the top winner, Hindi + English variants for ${CH[job.c]} (ready in 10h). Queue behind it: ${S.queue.length}.`);
+  }
+
+  // P4 Cohort Optimizer: graduated action on the losing pocket in each channel
+  for (let c=0;c<3;c++){
+    if (t>=6 && D.l[c]>0.02){
+      if (S.diag[c]===null){ S.diag[c]=t; log('P4',`${CH[c]}: cohort "${COHORTS[c]}" earns 0.35x vs 1.16x elsewhere (below breakeven). Starting graduated action.`); }
+      const age = t - S.diag[c];
+      const stage = age<12 ? 1 : age<24 ? 2 : 3;
+      D.l[c] *= stage===1 ? 0.97 : stage===2 ? 0.92 : 0.80;
+      if (age===12) log('P4',`${CH[c]}: lowering bids was not enough, narrowing targeting.`);
+      if (age===24) log('P4',`${CH[c]}: pausing the cohort inside guardrails. Freed budget goes to above-target cohorts.`);
+      D.l[c] = Math.max(0.01, D.l[c]);
+    }
+  }
+
+  // P5 Budget Allocator: move share toward equal marginal returns, capped per hour
+  const target = CH.map((c,i)=> Math.pow(BASE_ROAS[i]*env.d[i], 1/(1-CURVE)) * SHARE0[i]);
+  const tot = sum(target); let tgt = target.map(x=>Math.max(0.05, x/tot)); const tt=sum(tgt); tgt = tgt.map(x=>x/tt);
+  D.share = D.share.map((s,i)=> s + clamp(tgt[i]-s, -0.04, 0.04));
+  const ss = sum(D.share); D.share = D.share.map(x=>x/ss);
+  if (env.kind==='ipl' && !S.iplLogged){ S.iplLogged=true; log('P5','Moment trigger: IPL final. Moving budget toward Meta and OTT within the hour.'); }
+  const diffs = D.share.map((s,i)=>s-S.lastLogShare[i]);
+  if (Math.max(...diffs.map(Math.abs))>=0.04){
+    const up = diffs.indexOf(Math.max(...diffs)), down = diffs.indexOf(Math.min(...diffs));
+    log('P5',`Shifted ${(Math.abs(diffs[down])*100).toFixed(0)}% of budget from ${CH[down]} to ${CH[up]} (higher marginal ROAS). Under the 10% cap, so it ran automatically.`);
+    S.lastLogShare=[...D.share];
+  }
+}
+
+// ---------- Agent Health Index (formulas from the master document) ----------
+const score = (x,b,t) => 100*clamp((x-b)/(t-b),0,1);   // S = 100*(x-b)/(t-b), capped 0-100
+function health(){
+  const {C,D,t} = S, w=24;
+  const fatD = sum(last(D.fatH,w))/sum(last(D.spendH,w))*100;
+  const roasD = sum(last(D.revH,w))/sum(last(D.spendH,w)), roasC = sum(last(C.revH,w))/sum(last(C.spendH,w));
+  const lift = (roasD/roasC-1)*100;
+  const avg = a => a.length ? sum(last(a,5))/Math.min(5,a.length) : null;
+  const env = envAt(Math.max(0,t-1));
+  const gap = S.trackOn ? 38 : 2.5;
+  const pocket = sum(D.l)/3*100;
+  const qdepth = S.queue.length + S.jobs.length;
+  // each KPI: [label, unit, baseline, target, measured value, true=measured / false=modelled]
+  const K = [
+    { name:'P1 Signal Agent',     k:[['Reconciliation gap','%',25,3,gap,true],['Data freshness lag','h',24,1,1,false],['Spend with fresh calibration','%',0,90,85,false]] },
+    { name:'P2 Fatigue Sentinel', k:[['Spend on fatigued ads','%',20,10,fatD,true],['Detection lag','h',72,6,avg(S.lagSamples)??1,true],['Alert precision','%',50,85,84,false]] },
+    { name:'P3 Creative Studio',  k:[['Refresh time (flag to live)','h',48,6,avg(S.refreshSamples)??6,true],['Replacement queue','ads',8,0,qdepth,true],['New-ad win rate','%',40,65,62,false]] },
+    { name:'P4 Cohort Optimizer', k:[['Spend in losing cohorts','%',20,5,pocket,true],['Time to action','h',72,12,S.gateOpen?8:30,false],['Freed budget redeployed in 24h','%',0,90,S.gateOpen?88:40,false]] },
+    { name:'P5 Budget Allocator', k:[['True ROAS lift vs control','%',0,25,lift,true],['Reallocation lag','h',168,1,S.gateOpen?1:6,false],['Forecast error (MAPE)','%',30,8,10+(env.shock?14:0)+(env.kind==='ipl'?6:0),false]] }
+  ];
+  const A = K.map(a => { const s = a.k.map(k=>score(k[4],k[2],k[3])); a.s=s; return 0.54*s[0]+0.30*s[1]+0.16*s[2]; });
+  const gate = A[0]>=60 ? 1 : 0;
+  const ahi = gate * Math.pow(A[1],.30)*Math.pow(A[2],.20)*Math.pow(A[3],.25)*Math.pow(A[4],.25);
+  // hysteresis: enter red below 50, leave red only above 55
+  A.forEach((a,i)=>{ if (a<50) S.redState[i]=true; else if (a>55) S.redState[i]=false; });
+  const reds = S.redState.slice(1).filter(Boolean).length;
+  let level='Green', label='Green: every agent 70+, normal autonomy';
+  if (!gate){ level='Red'; label='Red 3 Halt: Data Trust gate closed, changes frozen'; }
+  else if (reds>=2){ level='Red'; label='Red 2 Critical: human approval needed'; }
+  else if (reds===1){ level='Red'; label='Red 1 Alert: Orchestrator diagnosing'; }
+  else { const low = A.slice(1).map((a,i)=>[a,i+2]).filter(x=>x[0]<70); if (low.length){ level='Amber'; label='Amber: P'+low.map(x=>x[1]).join(', P')+' self-fixing'; } }
+  return { K, A, ahi, gate, level, label, fatD, lift, roasD, roasC };
+}
+
+// ---------- Drawing the page ----------
+function render(){
+  const h = health(), {C,D,t} = S;
+  $('clock').textContent = `Day ${Math.floor(t/24)+1}, ${String(t%24).padStart(2,'0')}:00 (hour ${t} of ${END_HOUR})`;
+  const fatC = sum(last(C.fatH,24))/sum(last(C.spendH,24))*100;
+  const waste = 100*(1 - S.cumFatD/Math.max(1,S.cumFatC));
+  $('tiles').innerHTML = [
+    ['teal', h.roasD.toFixed(2)+'x','Drishti AI true ROAS'],
+    ['grey', h.roasC.toFixed(2)+'x','Business as usual true ROAS'],
+    [h.lift>=25?'teal':'', (h.lift>=0?'+':'')+h.lift.toFixed(1)+'%','ROAS lift (goal +25%)'],
+    [waste>=50?'teal':'', waste.toFixed(0)+'%','Less spend on fatigued ads (goal -50%)'],
+    ['teal', inr(S.cumRevD-S.cumRevC),'Extra revenue so far'],
+    ['', inr(S.cumFatC-S.cumFatD),'Fatigue waste avoided so far']
+  ].map(x=>`<div class="card tile"><b class="${x[0]}">${x[1]}</b><span>${x[2]}</span></div>`).join('');
+
+  // AHI header
+  $('ahi').innerHTML = `<div class="row"><b style="font-size:2rem">${Math.round(h.ahi)}</b><span class="pill ${h.level}">${h.label}</span></div>
+    <p class="grey" style="font-size:.8rem;margin:6px 0 0">AHI = Data Trust gate x P2^0.30 x P3^0.20 x P4^0.25 x P5^0.25. Scores are lift vs the control half, so a market shock cannot make an agent look bad. "modelled" KPIs use example values.</p>`;
+  $('agents').innerHTML = h.K.map((a,i)=>{
+    const sc = h.A[i], col = sc>=70?'var(--green)':sc>=50?'var(--amber)':'var(--red)';
+    return `<details ${i===0?'':''}><summary><b style="width:150px">${a.name}</b><div class="bar"><i style="width:${sc}%;background:${col}"></i></div><b style="width:32px;text-align:right">${Math.round(sc)}</b></summary>
+      <table>${a.k.map((k,j)=>`<tr><td>${k[0]} <small>(${k[5]?'measured':'modelled'})</small></td><td>${k[4].toFixed(1)}${k[1]}</td><td>${Math.round(a.s[j])}</td></tr>`).join('')}</table></details>`;
+  }).join('');
+
+  // money split bars
+  const bar = (H,title) => `<div style="font-size:.8rem;color:var(--muted)">${title}</div><div>${H.share.map((s,i)=>`<span style="width:${s*100}%;background:${COL[i]}">${s>0.07?CH[i]+' '+Math.round(s*100)+'%':''}</span>`).join('')}</div>`;
+  $('alloc').innerHTML = bar(C,'Business as usual')+bar(D,'Drishti AI'+(S.storm?' (Storm Mode: spend capped at 85%)':''));
+
+  // shock filter panel
+  $('shock').innerHTML = S.storm ? `<div class="card" style="margin-bottom:10px;border-color:var(--amber)"><b>Is it us or the world?</b><br>
+    <small>&#10003; Control half fell by the same amount &nbsp; &#10003; All channels dipped together &nbsp; &#10003; CPMs spiked account-wide &nbsp; &#10003; Platform status pages are normal &nbsp; &#10003; News scan matches a breaking event.<br>Verdict: <b>Market shock</b>, not an agent failure.</small></div>` : '';
+
+  // log
+  $('log').innerHTML = S.log.map(e=>`<div class="entry ${e.who}"><time>D${Math.floor(e.t/24)+1} ${String(e.t%24).padStart(2,'0')}h</time><em>${e.who==='BAU'?'Human team':e.who}</em>${e.text}</div>`).join('');
+  drawChart();
+}
+
+function drawChart(){
+  const W=760, H=230, L=40, R=10, T=10, B=24, hs=S.hist.slice(6); // skip first hours (window too short)
+  const ys = hs.flatMap(p=>[p.rc,p.rd]); const lo=Math.floor((Math.min(...ys,2.5)-0.1)*10)/10, hi=Math.ceil((Math.max(...ys,3.5)+0.1)*10)/10;
+  const X = t => L + (t/END_HOUR)*(W-L-R), Y = v => T + (1-(v-lo)/(hi-lo))*(H-T-B);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="True ROAS of both halves over time">`;
+  SCEN[scenKey].events.forEach(e=>{ s+=`<rect x="${X(e.from)}" y="${T}" width="${X(Math.min(e.to,END_HOUR))-X(e.from)}" height="${H-T-B}" fill="#fbbf24" opacity=".12"/><text x="${X(e.from)+4}" y="${T+12}">${e.label}</text>`; });
+  for (let i=0;i<=4;i++){ const v=lo+(hi-lo)*i/4; s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2a2e36"/><text x="4" y="${Y(v)+4}">${v.toFixed(1)}x</text>`; }
+  for (let d=0;d<=7;d++) s+=`<text x="${X(d*24)-8}" y="${H-6}">Day ${d+1}</text>`;
+  const line=(k,c)=>`<polyline fill="none" stroke="${c}" stroke-width="2.5" points="${hs.map(p=>X(p.t)+','+Y(p[k])).join(' ')}"/>`;
+  s += line('rc','#8b93a1') + line('rd','#2dd4bf') + `</svg>`;
+  $('chart').innerHTML = s;
+}
+
+// ---------- Controls ----------
+function loop(){
+  clearTimeout(timer);
+  if (!playing || S.t>=END_HOUR) { $('play').textContent = S.t>=END_HOUR ? 'Week complete' : 'Play'; return; }
+  $('play').textContent='Pause';
+  timer = setTimeout(()=>{ tick(); loop(); }, +$('speed').value);
+}
+function pickScenario(k){
+  scenKey=k; document.querySelectorAll('.scen').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
+  $('scenDesc').textContent = SCEN[k].desc; reset(); loop();
+}
+$('scenBtns').innerHTML = Object.entries(SCEN).map(([k,v])=>`<button class="scen" data-k="${k}">${v.name}<small>${v.sub}</small></button>`).join('');
+document.querySelectorAll('.scen').forEach(b=>b.onclick=()=>pickScenario(b.dataset.k));
+$('brand').innerHTML = Object.entries(BRANDS).map(([k,v])=>`<option value="${k}">${v.name}, ${inr(v.month)}/month</option>`).join('');
+$('brand').onchange = e => { brandKey=e.target.value; reset(); loop(); };
+$('play').onclick = () => { playing = !playing; loop(); };
+$('step').onclick = () => { playing=false; if (S.t<END_HOUR) tick(); $('play').textContent='Play'; };
+$('speed').onchange = loop;
+$('reset').onclick = () => { reset(); playing=true; loop(); };
+pickScenario('normal');
+</script>
 </body>
 </html>
