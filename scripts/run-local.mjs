@@ -2,7 +2,7 @@
 import { makeSample } from '../lib/sample.js';
 import { POST } from '../api/run.js';
 const s = makeSample(process.argv[2] || 'glowveda', { twists: { pixelBreak: process.argv.includes('pixel'), marketShock: process.argv.includes('shock') } });
-const res = await POST(new Request('http://x/api/run', { method: 'POST', body: JSON.stringify({ brand: s.brand, category: s.category, rows: s.rows, orders: s.orders }) }));
+const res = await POST(new Request('http://x/api/run', { method: 'POST', body: JSON.stringify({ brand: s.brand, category: s.category, rows: s.rows, orders: s.orders, competitors: s.competitors }) }));
 const text = await res.text();
 for (const line of text.trim().split('\n')) {
   const e = JSON.parse(line);

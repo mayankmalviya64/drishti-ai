@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Drishti AI · Live agents</title>
-<meta name="description" content="Five AI agents that find and fix ad-spend leaks across Meta, Google and OTT, graded on true revenue. Connect your data, press Run, watch them work.">
+<meta name="description" content="Data flows in from every ad channel, five AI agents find the leaks, recommend fixes, carry them out, and feed the new data back in. Press Run and watch the loop.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=Noto+Sans:wght@400;600&family=Noto+Sans+Tamil:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👁</text></svg>">
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="app.css?v=20261028c">
 <script>
   // Light mode by default; restore dark mode if the visitor chose it before.
   try { if (localStorage.getItem('drishti-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
@@ -30,98 +30,126 @@
 
 <!-- ============ One-line pitch ============ -->
 <section class="pitch">
-  <h1>Five AI agents that find and fix your ad-spend leaks, <em>live</em>.</h1>
-  <p>Pick a brand or connect your own ad data, press <b>Run</b>, and watch them diagnose, act within guardrails, and ask you before big moves.</p>
+  <h1>Data in → agents think → fix recommended → fix <em>done</em> → new data in.</h1>
+  <p>Press <b>Run the loop</b> and follow it clockwise. Hover anything to see what is flowing through it.</p>
 </section>
 
-<!-- ============ The working app: 3 panels, fits one screen ============ -->
-<main class="app">
-
-  <!-- 1 · CONNECT -->
-  <section class="panel" id="connectPanel">
-    <div class="panel-head"><span class="step">1</span><h2>Connect data</h2></div>
-
-    <div class="tabs" role="tablist">
-      <button class="tab active" data-tab="sample">Sample brand</button>
-      <button class="tab" data-tab="upload">Upload CSV</button>
-      <button class="tab" data-tab="sheet">Google Sheet</button>
-      <button class="tab" data-tab="meta">Meta Ads</button>
+<!-- ============ Controls: what data, which rule, where reports go ============ -->
+<section class="controls">
+  <div class="ctl">
+    <span class="ctl-label">Brand</span>
+    <div class="seg" role="radiogroup" aria-label="Sample brand">
+      <label><input type="radio" name="brand" value="glowveda" checked><span data-tip="brand-glowveda">Glowveda</span></label>
+      <label><input type="radio" name="brand" value="crunchkart"><span data-tip="brand-crunchkart">Crunchkart</span></label>
     </div>
+  </div>
+  <div class="ctl">
+    <span class="ctl-label">Add a twist</span>
+    <label class="chip"><input type="checkbox" id="twistPixel"><span>Google pixel breaks</span></label>
+    <label class="chip"><input type="checkbox" id="twistShock"><span>Market shock</span></label>
+  </div>
+  <div class="ctl" data-tip="rule">
+    <span class="ctl-label">Your rule</span>
+    <span class="rule">Hold a campaign if revenue is flat for <input class="field tiny" id="flatDays" type="number" min="1" max="7" value="2"> days</span>
+  </div>
+  <div class="ctl" data-tip="email">
+    <span class="ctl-label">Action reports to</span>
+    <!-- Visitors can replace this with their own address to get the reports themselves -->
+    <span class="email-wrap"><input class="field email" id="email" type="email" placeholder="Type your email address" value="mayankmalviya64@gmail.com" aria-label="Email address for action reports (replace with yours)"><span class="pen" aria-hidden="true">✎</span></span>
+  </div>
+  <button class="btn ghost small" id="ownBtn" aria-expanded="false" aria-controls="ownData">⚙ Use your own data</button>
+  <button class="btn run" id="runBtn">▶ Run the loop</button>
+</section>
 
-    <div class="panel-body">
-      <!-- Sample brands (personas from the deck) -->
-      <div class="tabpane active" id="tab-sample">
-        <label class="brand-card"><input type="radio" name="brand" value="glowveda" checked>
-          <span><b>Glowveda</b><small>Shreya's skincare brand · ₹1.5 Cr/month · Meta, Google, JioHotstar</small></span></label>
-        <label class="brand-card"><input type="radio" name="brand" value="crunchkart">
-          <span><b>Crunchkart</b><small>Aarush's snacks brand · ₹9 L/month · Meta, Google</small></span></label>
-        <p class="mini-label">Add a twist (test the diagnosis)</p>
-        <label class="check"><input type="checkbox" id="twistPixel"> Google pixel breaks yesterday</label>
-        <label class="check"><input type="checkbox" id="twistShock"> Market shock: CPMs spike everywhere</label>
-      </div>
+<!-- Your own data: hidden until "Use your own data" is pressed -->
+<section class="own" id="ownData" hidden>
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="upload">Upload CSV</button>
+    <button class="tab" data-tab="sheet">Google Sheet</button>
+    <button class="tab" data-tab="meta">Meta Ads</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </div>
+  <!-- CSV upload: real exports from Ads Manager / Google Ads / Shopify / Ad Library -->
+  <div class="tabpane active" id="tab-upload">
+    <label class="file"><span>Ad export (Meta / Google Ads)</span><input type="file" id="fileAds" accept=".csv,text/csv"></label>
+    <label class="file"><span>Shopify orders by UTM source <i>(optional, makes ROAS "true")</i></span><input type="file" id="fileOrders" accept=".csv,text/csv"></label>
+    <label class="file"><span>Competitor ads <i>(optional, from Meta Ad Library)</i></span><input type="file" id="fileComp" accept=".csv,text/csv"></label>
+    <p class="hint">Templates: <a id="tplAds" href="#" download="drishti-ads-template.csv">ads.csv</a> · <a id="tplOrders" href="#" download="drishti-orders-template.csv">orders.csv</a> · <a id="tplComp" href="#" download="drishti-competitors-template.csv">competitors.csv</a>. Edit them or drop in your own export; common column names are recognised.</p>
+  </div>
+  <!-- Google Sheets: public link, read through the backend -->
+  <div class="tabpane" id="tab-sheet">
+    <input class="field" id="sheetAds" placeholder="Ads sheet link (Anyone with link can view)">
+    <input class="field" id="sheetOrders" placeholder="Orders sheet link (optional)">
+    <button class="btn ghost small" id="loadSheet">Load sheet</button>
+    <p class="hint">Same columns as the CSV template. Each tab has its own link (it ends in <code>#gid=…</code>).</p>
+  </div>
+  <!-- Meta Marketing API: live account pull -->
+  <div class="tabpane" id="tab-meta">
+    <input class="field" id="metaToken" type="password" placeholder="Access token with ads_read">
+    <input class="field" id="metaAccount" placeholder="Ad account ID, e.g. act_1234567890">
+    <button class="btn ghost small" id="loadMeta">Pull last 14 days</button>
+    <p class="hint">Get a token from <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener">Graph API Explorer</a>. It is used once for this pull and never stored.</p>
+  </div>
+  <div class="tabpane" id="tab-settings">
+    <label class="row-field">Break-even true ROAS <input class="field tiny" id="breakeven" type="number" step="0.1" min="0.5" value="2.0"></label>
+    <input class="field" id="webhook" placeholder="Slack or Discord webhook (optional)">
+    <p class="hint">Approvals and rejections are posted here, like the deck's Slack/WhatsApp inbox.</p>
+  </div>
+  <div class="data-status" id="dataStatus">Loading sample…</div>
+</section>
 
-      <!-- CSV upload: real exports from Ads Manager / Google Ads / Shopify -->
-      <div class="tabpane" id="tab-upload">
-        <label class="file"><span>Ad export (Meta / Google Ads)</span><input type="file" id="fileAds" accept=".csv,text/csv"></label>
-        <label class="file"><span>Shopify orders by UTM source <i>(optional, makes ROAS "true")</i></span><input type="file" id="fileOrders" accept=".csv,text/csv"></label>
-        <p class="hint">Templates: <a id="tplAds" href="#" download="drishti-ads-template.csv">ads.csv</a> · <a id="tplOrders" href="#" download="drishti-orders-template.csv">orders.csv</a>. Edit them or drop in your own export; common column names are recognised.</p>
-      </div>
+<!-- ============ The loop: 4 quadrants, read clockwise ============ -->
+<main class="loop" id="loop">
 
-      <!-- Google Sheets: public link, read through the backend -->
-      <div class="tabpane" id="tab-sheet">
-        <input class="field" id="sheetAds" placeholder="Ads sheet link (Anyone with link can view)">
-        <input class="field" id="sheetOrders" placeholder="Orders sheet link (optional)">
-        <button class="btn ghost small" id="loadSheet">Load sheet</button>
-        <p class="hint">Same columns as the CSV template. Each tab has its own link (it ends in <code>#gid=…</code>).</p>
-      </div>
-
-      <!-- Meta Marketing API: live account pull -->
-      <div class="tabpane" id="tab-meta">
-        <input class="field" id="metaToken" type="password" placeholder="Access token with ads_read">
-        <input class="field" id="metaAccount" placeholder="Ad account ID, e.g. act_1234567890">
-        <button class="btn ghost small" id="loadMeta">Pull last 14 days</button>
-        <p class="hint">Get a token from <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener">Graph API Explorer</a>. It is used once for this pull and never stored.</p>
-      </div>
-
-      <div class="data-status" id="dataStatus">Loading sample…</div>
-
-      <details class="settings">
-        <summary>Settings &amp; approvals channel</summary>
-        <label class="row-field">Break-even true ROAS <input class="field tiny" id="breakeven" type="number" step="0.1" min="0.5" value="2.0"></label>
-        <input class="field" id="webhook" placeholder="Slack or Discord webhook (optional)">
-        <p class="hint">Approvals and rejections are posted here, like the deck's Slack/WhatsApp inbox.</p>
-      </details>
-    </div>
-
-    <div class="panel-foot">
-      <ul class="connectors" id="connectors"></ul>
-      <button class="btn run" id="runBtn">▶ Run the agents</button>
-    </div>
+  <!-- ① DATA IN (top-left) -->
+  <section class="q" id="q1">
+    <div class="q-head"><span class="step">1</span><h2>Data coming in</h2><span class="q-sub" id="srcCount"></span></div>
+    <div class="q-body"><div class="sources" id="sources"></div></div>
   </section>
 
-  <!-- 2 · AGENTS AT WORK -->
-  <section class="panel" id="agentsPanel">
-    <div class="panel-head"><span class="step">2</span><h2>Agents at work</h2><span class="engine" id="engine"></span></div>
+  <!-- arrow ① → ② -->
+  <div class="flow flow-h" id="flow12" data-tip="flow12"><i></i><span>raw data</span></div>
+
+  <!-- ② AGENTS AT WORK (top-right) -->
+  <section class="q" id="q2">
+    <div class="q-head"><span class="step">2</span><h2>Agents at work</h2><span class="engine" id="engine"></span></div>
     <div class="agent-strip" id="agentStrip"></div>
-    <div class="panel-body feed" id="feed">
-      <div class="empty">
-        <div class="empty-art">🧭 → 📡 → 🔥 → 🎨 → 🎯 → ⚖️</div>
-        <p>The Orchestrator decides which agent to call, reads each result, and reasons about what to check next. Press <b>Run</b> to watch it live.</p>
-      </div>
+    <div class="q-body feed" id="feed">
+      <div class="empty"><p>The Orchestrator decides which agent to call, reads each result, and reasons about what to check next. Hover an agent above to see its job.</p></div>
     </div>
   </section>
 
-  <!-- 3 · DECISIONS -->
-  <section class="panel" id="decisionsPanel">
-    <div class="panel-head"><span class="step">3</span><h2>Decisions</h2><span class="pill" id="statusPill"></span></div>
-    <div class="panel-body" id="decisions">
-      <div class="empty">
-        <div class="empty-art">✅ ⏳ ✋</div>
-        <p>Small fixes run on their own. Big moves wait here for your <b>Approve</b> or <b>Reject</b>. Every action is logged and can be undone.</p>
+  <!-- arrow ④ → ① (updated data goes back in) -->
+  <div class="flow flow-up" id="flow41" data-tip="flow41"><i></i><span>updated data fed back</span></div>
+
+  <!-- the hub in the middle -->
+  <button class="hub" id="hub" type="button" data-tip="hub">
+    <span class="hub-ring"></span>
+    <span class="hub-in" id="hubIn"><b>Drishti loop</b><small>press Run</small></span>
+  </button>
+
+  <!-- arrow ② → ③ -->
+  <div class="flow flow-down" id="flow23" data-tip="flow23"><i></i><span>findings</span></div>
+
+  <!-- ④ ACTION TAKEN (bottom-left) + ③ OBSERVED → RECOMMENDED (bottom-right).
+       They share one scroll area so every recommendation sits on the same row as its
+       action, with a thread between them. -->
+  <section class="lower" id="lower">
+    <div class="shell s-left"></div><div class="shell s-right"></div>
+    <div class="lh lh-left" id="q4"><span class="step">4</span><h2>Action taken</h2><span class="q-sub" id="actCount"></span></div>
+    <div class="lh lh-right" id="q3"><span class="step">3</span><h2>Observed → Recommended</h2><span class="pill" id="statusPill"></span></div>
+    <div class="rows" id="rows">
+      <div class="row empty-row">
+        <div class="empty">✅ Small fixes run on their own.<br>✋ Big moves wait for your <b>Approve</b>.<br>📧 Every action is reported by email.</div>
+        <div></div>
+        <div class="empty">👀 What the agents saw in the data,<br>and 💡 what they recommend doing about it.</div>
       </div>
     </div>
   </section>
 </main>
+
+<!-- ============ Result strip under the loop ============ -->
+<section class="results" id="results" hidden></section>
 
 <!-- ============ Below the fold: the detail behind each decision ============ -->
 <section class="details" id="details" hidden>
@@ -146,10 +174,13 @@
 </section>
 
 <footer class="foot">
-  Drishti AI · Team Phoenix · Abhikalp 2026 · Sample brands are fictional; connect your own data to test it on real numbers.
+  Drishti AI · Team Phoenix · Abhikalp 2026 · Sample brands and competitors are fictional; connect your own data to test it on real numbers.
   · <a href="story.html">How it works</a>
 </footer>
 
-<script type="module" src="app.js"></script>
+<!-- one floating hover card, filled by app.js -->
+<div class="tip" id="tip" role="tooltip" hidden></div>
+
+<script type="module" src="app.js?v=20261028c"></script>
 </body>
 </html>
