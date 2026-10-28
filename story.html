@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drishti AI · How it works</title>
+<meta name="description" content="Drishti AI is a team of AI agents that sits above Meta, Google and OTT ad managers, finds wasted ad spend every hour, fixes it within guardrails and grades itself on true revenue.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👁</text></svg>">
+<link rel="stylesheet" href="style.css">
+<script>
+  // Light mode by default. If the visitor chose dark mode before, restore it.
+  // (Wrapped in try/catch because some browsers block storage.)
+  try { if (localStorage.getItem('drishti-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
+</script>
+</head>
+<body>
+
+<!-- ===================== Top navigation ===================== -->
+<nav class="top">
+  <div class="wrap">
+    <a class="logo" href="#top">👁 Drishti AI</a>
+    <!-- back to the live agent app (index.html) -->
+    <a class="btn-link solid" href="./" style="padding:6px 12px;font-size:13px">Try the live agents →</a>
+    <div class="links" id="navLinks">
+      <a href="#problem">Problem</a>
+      <a href="#data">Connect the data</a>
+      <a href="#agents">Agents</a>
+      <a href="#playground">Playground</a>
+      <a href="#yourdata">Try your data</a>
+      <a href="#connectors">Connectors</a>
+      <a href="#grading">Self-grading</a>
+      <a href="#impact">Impact</a>
+    </div>
+    <!-- theme switch: crescent moon = go dark, sun = go light -->
+    <button class="theme-btn" id="themeBtn" aria-label="Switch to dark mode" title="Switch to dark mode">🌙</button>
+  </div>
+</nav>
+
+<!-- ===================== Hero ===================== -->
+<header class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow">Agentic AI for digital advertising</p>
+      <h1>Drishti AI <span>See every ad leak before it costs you.</span></h1>
+      <p class="intro">Advertisers waste <b>20–30% of digital spend</b> because no person can do three things at once: watch real ROAS by the hour, spot ads as they start to tire, and move money across Meta, Google and OTT. Drishti AI (Hindi for "vision, foresight") is a <b>team of AI agents that sits above those ad managers</b>. It reads every platform plus the brand's own order data, decides what to change, makes the change within guardrails, and explains every move.</p>
+      <div class="row" style="gap:12px;margin-top:20px">
+        <a class="btn-link solid" href="#problem">Start the story ↓</a>
+        <a class="btn-link ghost" href="#playground">Jump to the playground</a>
+        <a class="btn-link ghost" href="#yourdata">Test with my data</a>
+      </div>
+    </div>
+    <!-- live ticker: sample lines of what the agents do, cycling -->
+    <div class="ticker" aria-live="polite">
+      <div class="head"><span><span class="live-dot"></span>Drishti, right now</span><span>sample brand</span></div>
+      <div id="heroTicker"></div>
+    </div>
+  </div>
+  <div class="wrap stats-wrap">
+    <div class="stats">
+      <div class="card"><b>₹71,621 Cr</b><span>India's digital ad spend in 2025, 59% of all ad spend <sup><a href="#ref1">[1]</a></sup></span></div>
+      <div class="card"><b>15–25%</b><span>of monthly spend goes to ads that have already tired out <sup><a href="#ref4">[4]</a></sup></span></div>
+      <div class="card"><b>2.3×</b><span>platform-reported ROAS vs real, incrementality-measured ROAS <sup><a href="#ref5">[5]</a></sup></span></div>
+      <div class="card"><b>10+ hrs/week</b><span>a campaign manager spends on manual optimisation <sup><a href="#ref2">[2]</a></sup></span></div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== 1. Problem ===================== -->
+<section class="block" id="problem">
+  <div class="wrap">
+    <p class="eyebrow">1 · The problem</p>
+    <h2>Money leaks in the gaps between people, platforms and dashboards</h2>
+    <p class="lead">An ad buyer's job is one loop: <b>see → detect → diagnose → create → approve → act → reallocate</b>. Today every step is a human hand-off, so the time from "a problem starts" to "the fix is live" is measured in days. Toggle the loop and watch how much a single dying ad burns before anyone acts.</p>
+
+    <div class="loop-wrap">
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <div class="row">
+            <button id="loopToday" class="on">Today (people)</button>
+            <button id="loopDrishti">With Drishti AI</button>
+          </div>
+          <button id="loopReplay">↻ Replay</button>
+        </div>
+        <svg id="loopSvg" class="loop-svg" viewBox="0 0 520 440" width="100%" role="img" aria-label="The ad buyer's decision loop"></svg>
+      </div>
+      <div class="card">
+        <p class="h4">Spend burned on one dying ad before it is stopped</p>
+        <div class="burn" id="loopBurn">₹0</div>
+        <p class="muted small" id="loopNote" style="margin-top:2px">Illustration: one fatigued ad spending ₹40,000 a day. Time is counted until the ad stops spending.</p>
+        <div class="steps-list" id="loopSteps"></div>
+      </div>
+    </div>
+
+    <h3 style="margin:40px 0 6px;font-size:1.3rem">Four failures underneath</h3>
+    <p class="muted" style="margin:0 0 16px">They stack: a late, wrong scoreboard feeds slow creative fixes, and budgets stay locked inside each platform.</p>
+    <div class="grid g4">
+      <div class="card fail"><h3>1 · Latency</h3><svg id="failLatency" viewBox="0 0 260 110"></svg><p class="muted small">Auctions move in milliseconds and results change by the hour, but people check dashboards once or twice a day.</p></div>
+      <div class="card fail"><h3>2 · Fragmentation</h3><svg id="failSilo" viewBox="0 0 260 110"></svg><p class="muted small">Meta, Google and OTT each optimise inside their own walls. Nobody optimises across them, and each one says "spend more with me".</p></div>
+      <div class="card fail"><h3>3 · Creative decay</h3><svg id="failDecay" viewBox="0 0 260 110"></svg><p class="muted small">Fatigue is a slow slide, not a crash. By the time someone notices, the ad has burned money for days, and a regional replacement takes days more.</p></div>
+      <div class="card fail trap"><h3>4 · Measurement <span class="pill Amber">the trap</span></h3><svg id="failMeasure" viewBox="0 0 260 110"></svg><p class="muted small">Every platform claims the same sale. Optimise on platform ROAS and the number rises while real profit stays flat. Drishti anchors everything to <b>true ROAS</b> from the brand's own orders <sup><a href="#ref5">[5]</a></sup>.</p></div>
+    </div>
+
+    <h3 style="margin:40px 0 16px;font-size:1.3rem">Who feels it</h3>
+    <div class="grid g3">
+      <div class="card"><span class="pill Green">Daily user</span><h3 style="margin-top:8px">Shreya, 29</h3><p class="muted small">Performance marketing manager at a Mumbai D2C personal-care brand. ₹1.5 Cr/month across Meta, Google and OTT. Pulls four dashboards into a sheet every morning and argues with finance over which numbers are real.</p><p><i>"Fix the small stuff yourself; ask me before anything big."</i></p></div>
+      <div class="card"><span class="pill Amber">Solo SME founder</span><h3 style="margin-top:8px">Aarush, 26</h3><p class="muted small">Runs a young snacks brand in Pune and his own ads (₹8–10 lakh/month). New ads, especially regional ones, take him days.</p><p><i>"I can't sit in Ads Manager all day; I have a factory to run."</i></p></div>
+      <div class="card"><span class="pill Red">Budget owner</span><h3 style="margin-top:8px">Mr. Shyamlal, 58</h3><p class="muted small">Owns a traditional regional FMCG company in Indore. Never logs in, but decides whether digital gets funded at all.</p><p><i>"Everyone says digital. Show me what one rupee brings back."</i></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 2. Connect the data ===================== -->
+<section class="block" id="data">
+  <div class="wrap">
+    <p class="eyebrow">2 · Connect the pipes</p>
+    <h2>Every signal already exists. It just lives in nine different places.</h2>
+    <p class="lead">Ad spend sits in Meta, Google and the OTT console. Real sales sit in Shopify and the payment gateway. Stock sits in inventory, and the reasons behind sudden changes sit in the calendar and the news. <b>Switch the pipelines on below</b> and watch what Drishti can tell you once they flow into one place.</p>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <p class="h4" style="margin:0">Data pipelines (tap to connect)</p>
+        <div class="row"><button id="srcAll">Connect all</button><button id="srcNone">Disconnect all</button></div>
+      </div>
+      <div class="src-chips" id="srcChips"></div>
+      <svg id="pipeSvg" class="pipe-svg" viewBox="0 0 1000 430" role="img" aria-label="Data flows from sources into the unified layer, the agents and the recommendations"></svg>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><p class="h4" style="margin:0">What Drishti can now tell you</p><span class="small muted" id="unlockCount"></span></div>
+        <div class="meter" style="margin:10px 0 14px"><i id="coverMeter" style="width:0"></i></div>
+        <div id="insights"></div>
+      </div>
+      <div class="card">
+        <p class="h4">Sample record from <span id="payloadName" class="teal">a pipeline</span></p>
+        <p class="muted small" id="payloadDesc">Tap any pipeline to see the kind of record it sends and which agent uses it.</p>
+        <pre class="code" id="payload">{ }</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 3. Agents ===================== -->
+<section class="block" id="agents">
+  <div class="wrap">
+    <p class="eyebrow">3 · Meet the agents</p>
+    <h2>Five specialists and one conductor, each owning one leak</h2>
+    <p class="lead">Each agent owns one sub-problem and one goal metric, plus a <b>counter-metric</b> that stops it from gaming that goal. They hand work to each other: P1 cleans the data for everyone, P2 spots a dying ad and asks P3 for a replacement, and P3's new ads and P4's freed budget flow into P5, which allocates across channels. Tap an agent to see what it does.</p>
+
+    <div class="arch">
+      <div class="bar orch"><b>Orchestrator</b> · coordinates the agents, runs the "is it us or the world?" shock filter, grades the system with the Agent Health Index, and escalates to a human</div>
+      <div class="bar gate"><b>P1 Signal Agent: the Data Trust gate</b> · unifies platform data with Shopify, GA4 and payment-gateway orders, runs holdout tests, watches tracking. If the data breaks, every automatic action pauses.</div>
+      <div class="agents-row" id="agentCards"></div>
+    </div>
+    <div class="card" id="agentDetail" style="margin-top:12px"></div>
+
+    <h3 style="margin:36px 0 12px;font-size:1.2rem">How every decision flows</h3>
+    <div class="flowsteps">
+      <div><b>OBSERVE</b>Read every platform and the store's orders, every hour</div>
+      <div><b>CHECK</b>Is the data trustworthy? Is it us or the market?</div>
+      <div><b>DIAGNOSE</b>Fatigue, competitor, tracking bug or season? Weigh the causes</div>
+      <div><b>DECIDE</b>Pick the smallest move with the best expected ₹ impact</div>
+      <div><b>ACT / ASK</b>Small moves run automatically; big ones go to a human</div>
+      <div><b>LOG</b>Every action is saved with its reason and can be undone in one click</div>
+    </div>
+
+    <h3 style="margin:36px 0 12px;font-size:1.2rem">Tiered autonomy: a leash, not a black box</h3>
+    <div class="grid g3">
+      <div class="card"><span class="act-tier auto">AUTO</span><h3 style="margin-top:8px">Small moves run by themselves</h3><p class="muted small">A budget shift under 10%, pausing an ad that has spent under ₹5,000, launching a variant that passed brand-kit and ASCI checks.</p></div>
+      <div class="card"><span class="act-tier ask">ASK</span><h3 style="margin-top:8px">Big moves wait for a human</h3><p class="muted small">Raising the total budget, a crisis playbook, anything over the caps. Sent to an approval inbox on Slack or WhatsApp with the expected ₹ impact. No reply means the safe default.</p></div>
+      <div class="card"><span class="act-tier always">ALWAYS</span><h3 style="margin-top:8px">Logged, explained, reversible</h3><p class="muted small">Every action carries a plain-English reason and a one-click rollback. A kill switch freezes everything and returns to the last known-good setup.</p></div>
+    </div>
+
+    <h3 style="margin:36px 0 12px;font-size:1.2rem">Why agents, not another dashboard</h3>
+    <div class="card scroll-x">
+      <table class="t">
+        <tr><th>What the job needs</th><th>Dashboard</th><th>Rule engine</th><th class="teal">Drishti agents</th></tr>
+        <tr><td>Watch every platform 24×7</td><td class="muted">Shows data; a person must look</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Judge why a metric dropped</td><td class="muted">No</td><td class="muted">No (if-then only)</td><td>Yes, weighs four causes</td></tr>
+        <tr><td>Chain steps: detect → brief → create → test → reallocate</td><td class="muted">No</td><td class="muted">Hard-coded at best</td><td>Yes, agents hand work to each other</td></tr>
+        <tr><td>Use many tools (ad APIs, orders, creative generation)</td><td class="muted">No</td><td class="muted">Limited</td><td>Yes</td></tr>
+        <tr><td>Know its limits and ask a human</td><td class="muted">n/a</td><td class="muted">No</td><td>Yes: tiered autonomy and a severity ladder</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 4. Playground ===================== -->
+<section class="block" id="playground">
+  <div class="wrap">
+    <p class="eyebrow">4 · Playground</p>
+    <h2>Watch Drishti run a brand for a week, then break the world on purpose</h2>
+    <p class="lead">One market, two identical halves of the same brand, with the same demand and the same random noise. The <span class="grey"><b>grey half</b></span> is run by a human team that checks dashboards once a day. The <span class="teal"><b>teal half</b></span> is run by Drishti every hour. Any gap between them comes only from the agents, which is exactly how a real 50/50 holdout proves it. <b>Press play, then inject a disruption at any moment</b> and watch Drishti think, act and ask you before its big moves.</p>
+
+    <div class="card pg-controls">
+      <div class="row" style="justify-content:space-between">
+        <div class="row">
+          <button id="play" class="primary">▶ Play</button>
+          <button id="step">+1 hour</button>
+          <label class="small muted">Speed <select id="speed"><option value="600">Slow</option><option value="200" selected>Normal</option><option value="40">Fast</option></select></label>
+          <button id="reset">↻ Restart week</button>
+          <span id="clock" class="small grey"></span>
+        </div>
+        <div class="row">
+          <label class="small muted">Brand <select id="brand"></select></label>
+          <label class="small muted"><input type="checkbox" id="pauseAsk" checked> Pause for my approvals</label>
+          <button id="kill" class="danger" title="Red 3: freeze every change and roll back to the last known-good setup">⏻ Kill switch</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <p class="h4" style="margin:0">Inject a disruption now</p>
+        <label class="small muted">or run a scripted week <select id="preset"></select></label>
+      </div>
+      <div class="inject" id="injectBtns"></div>
+    </div>
+
+    <div class="pg-grid">
+      <!-- left column: outcomes -->
+      <div class="grid" style="align-content:start">
+        <div class="tiles" id="tiles"></div>
+        <div class="card">
+          <p class="h4">True ROAS, trailing 24 hours</p>
+          <div id="chart"></div>
+          <div class="legend"><span class="teal">■ Drishti half</span><span class="grey">■ Human team half</span><span class="muted">Shaded = disruption</span></div>
+        </div>
+        <div class="card alloc"><p class="h4">Where the money sits right now</p><div id="alloc"></div></div>
+        <div class="card"><p class="h4">Agent Health Index (Drishti grading itself)</p><div id="ahi"></div><div id="agentsHealth"></div></div>
+      </div>
+      <!-- right column: the agent's mind, approvals, log -->
+      <div class="grid" style="align-content:start">
+        <div class="card">
+          <p class="h4">Drishti is thinking <span class="cursor"></span></p>
+          <div id="banners"></div>
+          <div class="chips" id="agentChips"></div>
+          <div class="console" id="console" aria-live="polite"></div>
+        </div>
+        <div class="card"><p class="h4">Approval inbox <span class="dim">(you are Shreya)</span></p><div id="inbox"></div></div>
+        <div class="card"><p class="h4">Disruption reports</p><div id="reports"><p class="empty">Inject a disruption to see how much Drishti protected compared with the human team.</p></div></div>
+        <div class="card"><p class="h4">Decision log</p><div id="log"></div></div>
+      </div>
+    </div>
+    <p class="muted small" style="margin-top:14px">The market, both halves and every agent decision are computed live in your browser each simulated hour with example data for fictional brands. In production the same decisions run on the Meta Marketing API, Google Ads API, Shopify Admin API and an LLM with tool use for the reasoning layer.</p>
+  </div>
+</section>
+
+<!-- ===================== 5. Your data ===================== -->
+<section class="block" id="yourdata">
+  <div class="wrap">
+    <p class="eyebrow">5 · Try it on your numbers</p>
+    <h2>Replace the example data with your own and let Drishti analyse it</h2>
+    <p class="lead">Type over the example values or paste a CSV exported from Ads Manager, Google Ads and Shopify. Drishti reconciles platform claims against your store, scores every ad for fatigue, finds losing cohorts, proposes a guarded budget shift and writes an action plan. Then <b>send your numbers into the playground</b> to stress-test them against a pandemic or an IPL night. Everything stays in your browser.</p>
+
+    <div class="card" style="margin-bottom:16px">
+      <div class="row" style="gap:16px;align-items:flex-end">
+        <label class="f">Brand name<input id="bBrand" value="My brand"></label>
+        <label class="f">Paid-traffic revenue in your store, last 30 days (₹)<input id="bStore" inputmode="numeric"></label>
+        <label class="f">Gross margin %<input id="bMargin" inputmode="numeric" value="50"></label>
+        <div class="row" style="margin-left:auto">
+          <button id="bExample">Load example</button>
+          <button id="bClear">Clear all</button>
+        </div>
+      </div>
+      <p class="muted small" style="margin:8px 0 0">Store revenue = orders that came from paid ads (Shopify or GA4 by UTM source). It is the ground truth Drishti uses to correct each platform's over-claiming. Gross margin sets your break-even ROAS (1 ÷ margin).</p>
+    </div>
+
+    <div class="byod-grid">
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3>Channels <span class="muted small">(last 30 days)</span></h3><div class="row"><button class="small" data-csv="ch">Paste CSV</button><button class="small" data-tpl="ch">Template</button><button class="small" id="addCh">+ Row</button></div></div>
+        <div class="csvbox" id="csv-ch" hidden><textarea class="csv" placeholder="name,type,spend,platform_revenue"></textarea><div class="row" style="margin-top:6px"><button class="small primary" data-apply="ch">Use this CSV</button></div></div>
+        <div class="scroll-x"><table class="edit" id="tCh"></table></div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3>Audience cohorts <span class="muted small">(optional)</span></h3><div class="row"><button class="small" data-csv="co">Paste CSV</button><button class="small" data-tpl="co">Template</button><button class="small" id="addCo">+ Row</button></div></div>
+        <div class="csvbox" id="csv-co" hidden><textarea class="csv" placeholder="cohort,channel,spend,platform_revenue"></textarea><div class="row" style="margin-top:6px"><button class="small primary" data-apply="co">Use this CSV</button></div></div>
+        <div class="scroll-x"><table class="edit" id="tCo"></table></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="row" style="justify-content:space-between"><h3>Ads <span class="muted small">(last 7 days)</span></h3><div class="row"><button class="small" data-csv="ad">Paste CSV</button><button class="small" data-tpl="ad">Template</button><button class="small" id="addAd">+ Row</button></div></div>
+      <div class="csvbox" id="csv-ad" hidden><textarea class="csv" placeholder="ad,channel,spend_7d,frequency,ctr_now,ctr_first3days,cpm_change_pct,days_live"></textarea><div class="row" style="margin-top:6px"><button class="small primary" data-apply="ad">Use this CSV</button></div></div>
+      <div class="scroll-x"><table class="edit" id="tAd"></table></div>
+    </div>
+
+    <div class="row" style="margin:16px 0">
+      <button class="primary" id="bRun">Run Drishti analysis</button>
+      <button id="bSend" disabled>Send to playground →</button>
+      <span id="bMsg" class="warn"></span>
+    </div>
+    <div id="bOut"></div>
+  </div>
+</section>
+
+<!-- ===================== 6. Connectors ===================== -->
+<section class="block" id="connectors">
+  <div class="wrap">
+    <p class="eyebrow">6 · Data connectors</p>
+    <h2>What plugs in, how, and how often</h2>
+    <p class="lead">Every input has a public API or a scheduled export, so Drishti needs no new tracking. Read-only access comes first; write access (pausing ads, moving budget) is switched on only after a period in shadow mode, where agents log what they <i>would</i> have done next to what the team actually did.</p>
+    <div class="stack" style="margin-bottom:18px">
+      <div><b>1 · Ingest</b>Airbyte or Fivetran connectors, plus webhooks for orders and payments</div>
+      <div><b>2 · Store and model</b>BigQuery + dbt: one table of spend, orders and the true-ROAS model</div>
+      <div><b>3 · Measure</b>Holdout and geo tests; open-source MMM (Google Meridian / Meta Robyn) refreshed weekly</div>
+      <div><b>4 · Reason and act</b>An LLM with tool use runs the five agents and the Orchestrator inside guardrails</div>
+      <div><b>5 · Surface</b>Dashboard, Slack or WhatsApp approval inbox, and the audit log</div>
+    </div>
+    <div class="grid g3" id="connGrid"></div>
+  </div>
+</section>
+
+<!-- ===================== 7. Self-grading ===================== -->
+<section class="block" id="grading">
+  <div class="wrap">
+    <p class="eyebrow">7 · How Drishti grades itself</p>
+    <h2>One number, the Agent Health Index, that a weak agent cannot hide inside</h2>
+    <p class="lead">Each KPI is scored 0–100 against its baseline and target, measured as lift versus the untouched control group. Each agent score blends Outcome (54%), Leading (30%) and Quality (16%) KPIs, weighted with AHP <sup><a href="#ref9">[9]</a></sup>. The AHI then takes a <b>weighted geometric mean</b> <sup><a href="#ref13">[13]</a></sup>, so one broken agent drags the total down hard. Drag the sliders to compare it with a plain average.</p>
+    <div class="grid g2">
+      <div class="card">
+        <div id="ahiSliders"></div>
+        <div class="row" style="gap:24px;margin-top:14px">
+          <div><div class="muted small">AHI (geometric)</div><div class="burn" id="ahiGeo">75</div></div>
+          <div><div class="muted small">Plain weighted average</div><div class="burn grey" id="ahiAvg">75</div></div>
+          <div><div class="muted small">Status</div><div id="ahiStatus" style="margin-top:10px"></div></div>
+        </div>
+        <p class="muted small" id="ahiExplain"></p>
+        <p class="tiny dim">AHI = G × P2<sup>0.30</sup> × P3<sup>0.20</sup> × P4<sup>0.25</sup> × P5<sup>0.25</sup>. G = 1 if the P1 score is 60 or more, else 0. The weights come from the brand's own data: 50/50 between the two goals, then split by where the waste window and the ROAS gap sit. After launch, Shapley values from agent-level holdouts take over <sup><a href="#ref12">[12]</a></sup>.</p>
+      </div>
+      <div class="card">
+        <h3>"Is it us or the world?" The shock filter</h3>
+        <p class="muted small">Before blaming an agent, the Orchestrator runs five checks. If the market moved, it tags a <b>Market Shock</b>, enters <b>Storm Mode</b> (tighter caps, protect budget, send a plain-language briefing) and does not penalise the agents.</p>
+        <ol class="small" style="padding-left:18px">
+          <li><b>Control group:</b> did the untouched holdout fall by the same amount?</li>
+          <li><b>Breadth:</b> did all channels and agents dip together?</li>
+          <li><b>Auction:</b> did CPMs spike account-wide at the same time?</li>
+          <li><b>Status:</b> what do platform status pages and API error rates show?</li>
+          <li><b>Calendar and news:</b> does a sale, IPL match, festival, election or news event explain it?</li>
+        </ol>
+      </div>
+    </div>
+    <h3 style="margin:28px 0 12px;font-size:1.2rem">Severity ladder: not every red is a crisis</h3>
+    <div class="ladder">
+      <div class="lv-g"><b style="color:var(--green)">Green · Healthy</b>Every agent 70+. Normal autonomy.</div>
+      <div class="lv-a"><b style="color:var(--amber)">Amber · Watch</b>An agent at 50–69. It runs its own self-fix playbook within guardrails.</div>
+      <div class="lv-r"><b style="color:var(--red)">Red 1 · Alert</b>One agent below 50 for 2+ windows. The Orchestrator finds the root cause across agents.</div>
+      <div class="lv-r"><b style="color:var(--red)">Red 2 · Critical</b>2+ agents red, or a goal KPI breached. Shreya must act within 1 hour; autonomy drops to approve-only.</div>
+      <div class="lv-h"><b style="color:var(--red)">Red 3 · Halt</b>Data Trust gate fails or spend runs 20%+ over plan. Kill switch: freeze and roll back.</div>
+    </div>
+    <p class="muted small">Two anti-flicker rules: a KPI is scored only after a minimum spend and sample, and an agent enters red below 50 but leaves only above 55.</p>
+  </div>
+</section>
+
+<!-- ===================== 8. Impact ===================== -->
+<section class="block" id="impact">
+  <div class="wrap">
+    <p class="eyebrow">8 · Impact and build</p>
+    <h2>What it is worth, how we prove it, and how fast it can be built</h2>
+    <div class="grid g3">
+      <div class="card"><p class="h4">Goal 1</p><div class="burn teal">ROAS +25%</div><p class="muted small">P1 + P4 + P5: stop funding channels that only look good, cut losing cohorts, send each next rupee to the best marginal return. Brands that moved off platform attribution saw +31% ROAS <sup><a href="#ref6">[6]</a></sup>.</p></div>
+      <div class="card"><p class="h4">Goal 2</p><div class="burn teal">Fatigue waste −50%</div><p class="muted small">P2 + P3: detect fatigue hours earlier (or predict it) and have a replacement ready, so the dying ad stops spending sooner <sup><a href="#ref4">[4]</a></sup>.</p></div>
+      <div class="card"><p class="h4">For Shreya's brand (₹1.5 Cr/month)</p><div class="burn">≈ ₹1.1 Cr</div><p class="muted small">more revenue a month on the same spend (ROAS 3.0 → 3.75), ₹11–19 lakh a month of fatigue waste freed, and about 10 hours a week of her time back.</p></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3>How we prove it to a sceptical CFO (or Mr. Shyamlal)</h3>
+      <p class="muted small" style="margin:0">A 50/50 geo or account holdout runs for the first 8 weeks: Drishti on one half, business as usual on the other. The goal metrics are reported on the difference between the halves. That is the same design as the playground above.</p>
+    </div>
+    <h3 style="margin:28px 0 12px;font-size:1.2rem">Built in about 4 weeks by a 3-person team</h3>
+    <div class="timeline">
+      <div><b>Week 1</b><br>Data layer: Meta, Google and Shopify connectors, true-ROAS model, Data Trust Score. <span class="tag">live, read-only</span></div>
+      <div><b>Week 2</b><br>P2 Fatigue Sentinel and P5 Budget Allocator, guardrails and audit log. <span class="tag">small moves only</span></div>
+      <div><b>Week 3</b><br>P3 and P4 in shadow mode (they recommend, people act); AHI scoring and the severity ladder. <span class="tag">shadow</span></div>
+      <div><b>Week 4</b><br>Dashboard, Slack approval inbox and holdout set-up. Pilot with 1–2 brands. <span class="tag">pilot</span></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><b>Drishti AI</b> · Abhikalp 2026, Case 5: Media, Advertising &amp; Digital Streaming. Brands in the playground are fictional; figures are illustrative unless referenced.</p>
+    <p class="h4" style="margin-top:20px">References</p>
+    <ol>
+      <li id="ref1">dentsu Digital Advertising Report 2026, via Social Samosa — <a href="https://www.socialsamosa.com/report/digital-becomes-indias-largest-ad-channel-dentsu-report-11067359">link</a></li>
+      <li id="ref2">DoubleVerify, 2025 Global Insights Report, via Business Wire — <a href="https://www.businesswire.com/news/home/20250813676109/en">link</a></li>
+      <li id="ref3">ANA Programmatic Media Supply Chain Transparency Study, via MarTech — <a href="https://martech.org/ana-study-finds-25-of-programmatic-ad-dollars-are-wasted">link</a></li>
+      <li id="ref4">Segwise, Ad Creative Fatigue guide — <a href="https://segwise.ai/blog/ad-creative-fatigue-guide">link</a></li>
+      <li id="ref5">Webtonic, Attribution Analytics (150-brand incrementality study) — <a href="https://www.webtonic.io/blog/attribution-analytics">link</a></li>
+      <li id="ref6">ThoughtMetric, 100 Brands Improved ROAS by an Average of 31% — <a href="https://thoughtmetric.io/blog/100-brands-improved-roas-by-an-average-of-31-with-thoughtmetric">link</a></li>
+      <li id="ref7">Google–KPMG, Indian Languages: Defining India's Internet, via exchange4media — <a href="https://www.exchange4media.com/digital-news/net-surfers-in-vernacular-languages-grew-from-42-million-in-2011-to-234-million-in-2016report-68691.html">link</a></li>
+      <li id="ref8">upGrowth, D2C Performance Marketing in India — <a href="https://upgrowth.in/d2c-performance-marketing-in-india">link</a></li>
+      <li id="ref9">Saaty (1990), The analytic hierarchy process — <a href="https://doi.org/10.1016/0377-2217(90)90057-I">doi</a></li>
+      <li id="ref10">Diakoulaki et al. (1995), The CRITIC method — <a href="https://doi.org/10.1016/0305-0548(94)00059-H">doi</a></li>
+      <li id="ref11">Keeney &amp; Raiffa (1976), Decisions with Multiple Objectives — <a href="https://doi.org/10.1017/CBO9781139174084">doi</a></li>
+      <li id="ref12">Shapley (1953), A value for n-person games — <a href="https://en.wikipedia.org/wiki/Shapley_value">link</a></li>
+      <li id="ref13">OECD / JRC (2008), Handbook on Constructing Composite Indicators — <a href="https://doi.org/10.1787/9789264043466-en">doi</a></li>
+    </ol>
+  </div>
+</footer>
+
+<!-- Scripts: the simulator first (others use it), then the story visuals, then "your data" -->
+<script src="sim.js"></script>
+<script src="story.js"></script>
+<script src="byod.js"></script>
+</body>
+</html>

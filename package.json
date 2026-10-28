@@ -1,0 +1,7 @@
+{
+  "name": "drishti-ai",
+  "private": true,
+  "type": "module",
+  "description": "Drishti AI: five AI agents that find and fix ad-spend leaks",
+  "engines": { "node": ">=20" }
+}
