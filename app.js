@@ -415,11 +415,13 @@ renderRules();
 
 // Ask the backend which AI engine is on (Groq / Gemini / rules)
 // and which models it can switch between (for the picker in ②).
-fetch(API + '/api/health').then(r => r.json()).then(h => {
+// If the backend doesn't answer within 8 seconds (server down, or a network that
+// blocks vercel.app), mark it offline so runs happen right here in the browser.
+fetch(API + '/api/health', { signal: AbortSignal.timeout(8000) }).then(r => r.json()).then(h => {
   state.engine = h.engine;
   state.models = h.models || [];
   renderModelPick();
-}).catch(() => renderModelPick());
+}).catch(() => { state.offline = true; renderModelPick(); });
 
 // The model picker: the default model is always on; choosing another swaps it for the next run.
 // "Built-in rules" runs the same agent maths with no AI model at all.
@@ -684,12 +686,23 @@ async function run() {
   // Reader: pulls lines off the network stream into a queue
   const reader = (async () => {
     try {
-      const res = await fetch(API + '/api/run', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand: state.data.brand, category: state.data.category, rows: state.data.rows, orders: state.data.orders,
-          competitors: state.data.competitors || [], breakevenRoas: Number($('#breakeven').value) || 2,
-          rules: state.rules, model: $('#modelPick').value || undefined }),
-      });
+      const body = { brand: state.data.brand, category: state.data.category, rows: state.data.rows, orders: state.data.orders,
+        competitors: state.data.competitors || [], breakevenRoas: Number($('#breakeven').value) || 2,
+        rules: state.rules, model: $('#modelPick').value || undefined };
+      // Backend known to be unreachable → go straight to the on-device run
+      if (state.offline) return await runHere(body, queue);
+      // Give the server 10 seconds to start answering; after that, run here instead
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      let res;
+      try {
+        res = await fetch(API + '/api/run', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal,
+        });
+      } catch {
+        state.offline = true; renderModelPick();
+        return await runHere(body, queue);
+      } finally { clearTimeout(timer); }
       if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw new Error(j.error || 'Server error ' + res.status); }
       const rd = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
       for (;;) {
@@ -699,7 +712,7 @@ async function run() {
         let i; while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (line) queue.push(JSON.parse(line)); }
       }
     } catch (e) { queue.push({ type: 'error', message: e.message + ' Check your connection and try again.' }); }
-    finished = true;
+    finally { finished = true; }
   })();
   // Player: shows queued events at a human pace
   while (!finished || queue.length) {
@@ -713,6 +726,15 @@ async function run() {
   watchLine('<b>Back to watching</b> · the next full check re-reads everything the agents just changed');
 }
 $('#runBtn').onclick = run;
+
+// Fallback: when the server can't be reached, run the same agents in this browser.
+// It uses the built-in rules engine (AI keys only live on the server), so the loop
+// still completes with real numbers instead of hanging on "reading…".
+async function runHere(body, queue) {
+  queue.push({ type: 'thought', text: 'Server not reachable from this network, so the agents are running right here in your browser (built-in rules engine).' });
+  const { runDrishti } = await import('./lib/agent.js');
+  await runDrishti({ ...body, model: 'rules' }, e => queue.push(e));
+}
 $('#runBtn').classList.add('idle');
 $('#hub').onclick = () => (state.result ? $('#details').scrollIntoView({ behavior: 'smooth' }) : run());
 
