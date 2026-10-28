@@ -8,6 +8,7 @@
 // Hovering anything shows what is flowing through it (one shared hover card, see TIPS).
 import { makeSample, toCSV } from './lib/sample.js';
 import { cleanRows, cleanOrders, cleanCompetitors, EVENTS } from './lib/analyze.js';
+import { RULE_TYPES, DEFAULT_RULES, cleanRule, ruleText } from './lib/rules.js';
 
 // When the page is opened from GitHub Pages, talk to the Vercel backend.
 const API = location.hostname.endsWith('github.io') ? 'https://drishti-ai-mvp.vercel.app' : '';
@@ -62,6 +63,9 @@ const state = {
   updates: {},       // source name → lines of data that changed after actions ("fed back")
   mail: {},          // action id → email status text
   loop: 0,           // how many times the loop has run
+  rules: [],         // your standing rules, e.g. [{ type: 'flat', a: 2 }]
+  models: [],        // AI models the backend can use (for the picker in ②)
+  paceCut: {},       // channel → ₹/day the agents stopped spending (slows that tile's live counter)
 };
 
 // Safe localStorage (some browsers block it)
@@ -98,6 +102,7 @@ $('#ownBtn').onclick = () => {
   const open = $('#ownData').hidden;
   $('#ownData').hidden = !open;
   $('#ownBtn').setAttribute('aria-expanded', String(open));
+  fitLoop();
 };
 $$('.tab').forEach(t => t.onclick = () => {
   $$('.tab').forEach(x => x.classList.toggle('active', x === t));
@@ -114,6 +119,8 @@ function setStatus(text, kind = 'ok') {
 function setData(d) {
   state.data = { ...d, clean: cleanRows(d.rows), cleanOrders: cleanOrders(d.orders || []), cleanComp: cleanCompetitors(d.competitors || []) };
   state.updates = {};
+  state.paceCut = {};
+  for (const k of Object.keys(counts)) delete counts[k];
   setStatus(describe(state.data));
   renderSources();
 }
@@ -122,7 +129,8 @@ function setData(d) {
 function describe(d) {
   const dates = [...new Set(d.clean.map(r => r.date))];
   const ch = [...new Set(d.clean.map(r => r.channel))];
-  return `<b>${esc(d.brand)}</b> · ${d.rows.length} rows · ${dates.length} days · ${esc(ch.join(', '))} · ${d.orders?.length ? 'Shopify orders ✓' : '<span style="color:var(--amber)">no orders file (ROAS estimated)</span>'}${d.competitors?.length ? ' · competitor ads ✓' : ''}`;
+  return `<b>${esc(d.brand)}</b> · ${d.rows.length} rows · ${dates.length} days · ${esc(ch.join(', '))} · ${d.orders?.length ? `${esc(d.ordersFrom || 'Shopify')} orders ✓` : '<span style="color:var(--amber)">no orders file (ROAS estimated)</span>'}${d.competitors?.length ? ' · competitor ads ✓' : ''}` +
+    (d.connected?.length ? `<br><small>Connected: ${esc(d.connected.join(' · '))}</small>` : '');
 }
 
 function loadSample() {
@@ -197,10 +205,135 @@ $('#loadMeta').onclick = async () => {
   setStatus('Pulling from the Meta Marketing API…', '');
   try {
     const { rows } = await connect({ type: 'meta', token, account });
-    setData({ brand: 'Your Meta account', category: 'consumer products', rows, orders: [], source: 'Meta Ads API' });
-    setStatus(describe(state.data) + '<br><small>Tip: add a Shopify orders CSV in "Upload CSV" for true ROAS.</small>');
+    mergeIn({ rows, label: 'Meta Ads API' });
+    if (!state.data.orders?.length) setStatus(describe(state.data) + '<br><small>Tip: connect Shopify or GA4 (or upload an orders CSV) for true ROAS.</small>');
   } catch (e) { setStatus(esc(e.message), 'err'); }
 };
+
+// ---------------------------------------------------------------------------
+// Several sources together: each new connection is ADDED to your own data.
+//   • ad rows replace only the channels they bring (Google Ads replaces Google rows, keeps Meta)
+//   • orders (Shopify / GA4 / a partner) replace the earlier orders source
+// The first real connection drops the fictional sample ads, so real and sample never mix,
+// except when you connect only an orders source: then the sample ads stay until you add yours.
+// ---------------------------------------------------------------------------
+function mergeIn({ rows = [], orders = null, label, ordersFrom }) {
+  const cur = state.data || {};
+  const fromSample = cur.source === 'Sample';
+  const channelOf = r => cleanRows([r])[0]?.channel;
+  const newCh = new Set(rows.map(channelOf));
+  const keepRows = fromSample && rows.length ? [] : (cur.rows || []).filter(r => !newCh.has(channelOf(r)));
+  const next = {
+    brand: fromSample && rows.length ? 'Your brand' : cur.brand || 'Your brand',
+    category: cur.category || 'consumer products',
+    rows: [...keepRows, ...rows],
+    orders: orders || (fromSample && rows.length ? [] : cur.orders || []),
+    competitors: fromSample && rows.length ? [] : cur.competitors || [],
+    ordersFrom: orders ? ordersFrom || label : (fromSample && rows.length ? undefined : cur.ordersFrom),
+    source: rows.length || !fromSample ? 'Connected' : 'Sample',
+    connected: [...new Set([...(fromSample ? [] : cur.connected || []), label])],
+  };
+  if (!next.rows.length) return setStatus(`${esc(label)} is connected. Now connect an ad source (Meta, Google Ads or a partner) so the agents have ads to check.`, 'err');
+  setData(next);
+  if (next.source === 'Sample') setStatus(describe(state.data) + `<br><small>${esc(label)} orders are in; the ads are still the sample brand's until you connect your ad account.</small>`);
+}
+
+$('#loadGads').onclick = async () => {
+  const token = $('#gadsToken').value.trim(), devToken = $('#gadsDev').value.trim(), customer = $('#gadsCustomer').value.trim();
+  if (!token || !devToken || !customer) return setStatus('Google Ads needs an access token, a developer token and a customer ID.', 'err');
+  setStatus('Pulling from the Google Ads API…', '');
+  try {
+    const { rows } = await connect({ type: 'gads', token, devToken, customer, manager: $('#gadsManager').value.trim() });
+    mergeIn({ rows, label: 'Google Ads API' });
+  } catch (e) { setStatus(esc(e.message), 'err'); }
+};
+
+$('#loadGa4').onclick = async () => {
+  const token = $('#ga4Token').value.trim(), property = $('#ga4Property').value.trim();
+  if (!token || !property) return setStatus('GA4 needs an access token and a property ID.', 'err');
+  setStatus('Pulling purchases from GA4…', '');
+  try {
+    const { orders } = await connect({ type: 'ga4', token, property });
+    mergeIn({ orders, label: 'GA4', ordersFrom: 'GA4' });
+  } catch (e) { setStatus(esc(e.message), 'err'); }
+};
+
+$('#loadShop').onclick = async () => {
+  const shop = $('#shopDomain').value.trim(), token = $('#shopToken').value.trim();
+  if (!shop || !token) return setStatus('Shopify needs the store address and an Admin API token.', 'err');
+  setStatus('Pulling orders from Shopify…', '');
+  try {
+    const { orders } = await connect({ type: 'shopify', shop, token });
+    mergeIn({ orders, label: 'Shopify API', ordersFrom: 'Shopify' });
+  } catch (e) { setStatus(esc(e.message), 'err'); }
+};
+
+// Partners without a simple live API for small brands: upload the report each one exports.
+// kind 'ads'   → ad rows (spend, clicks, sales the platform claims), tagged with the partner's channel
+// kind 'sales' → orders (what really sold), used like Shopify orders
+const PARTNERS = [
+  { name: 'Amazon Ads', ch: 'Amazon', kind: 'ads', where: 'Amazon Ads console → Reports → Sponsored Products, daily, campaign + ad' },
+  { name: 'Flipkart Ads', ch: 'Flipkart', kind: 'ads', where: 'Flipkart Ads → Reports → Campaign performance, daily' },
+  { name: 'Myntra Ads', ch: 'Myntra', kind: 'ads', where: 'Myntra Partner Portal → Ads → Performance report' },
+  { name: 'Nykaa Ads', ch: 'Nykaa', kind: 'ads', where: 'Nykaa Ads platform → Reports → Daily campaign report' },
+  { name: 'Blinkit Ads', ch: 'Blinkit', kind: 'ads', where: 'Blinkit brand portal → Ads → Campaign report' },
+  { name: 'Zepto Ads', ch: 'Zepto', kind: 'ads', where: 'Zepto brand dashboard → Ads → Download report' },
+  { name: 'Swiggy Instamart Ads', ch: 'Instamart', kind: 'ads', where: 'Swiggy Ads → Instamart → Campaign report' },
+  { name: 'YouTube', ch: 'Google', kind: 'ads', where: 'Google Ads → Campaigns → filter Video → Download (CSV)' },
+  { name: 'LinkedIn Ads', ch: 'LinkedIn', kind: 'ads', where: 'Campaign Manager → Analyze → Export, time breakdown Daily' },
+  { name: 'Snapchat Ads', ch: 'Snapchat', kind: 'ads', where: 'Ads Manager → Reports → Daily breakdown → Export' },
+  { name: 'Pinterest Ads', ch: 'Pinterest', kind: 'ads', where: 'Ads Manager → Reporting → Export, daily' },
+  { name: 'X Ads', ch: 'X', kind: 'ads', where: 'X Ads → Campaigns → Data → Export, daily' },
+  { name: 'InMobi', ch: 'InMobi', kind: 'ads', where: 'InMobi Advertiser dashboard → Reports → Export' },
+  { name: 'WooCommerce', ch: '', kind: 'sales', where: 'WooCommerce → Orders → Export (include UTM source / order attribution)' },
+  { name: 'Amazon Seller Central', ch: 'Amazon', kind: 'sales', where: 'Seller Central → Reports → Business Reports → by date' },
+  { name: 'Flipkart Seller Hub', ch: 'Flipkart', kind: 'sales', where: 'Seller Hub → Reports → Orders report' },
+  { name: 'Razorpay', ch: '', kind: 'sales', where: 'Razorpay Dashboard → Transactions → Payments → Export (with notes / UTM)' },
+  { name: 'Shiprocket', ch: '', kind: 'sales', where: 'Shiprocket → Orders → Export, delivered orders' },
+  { name: 'AppsFlyer', ch: '', kind: 'sales', where: 'AppsFlyer → Export data → In-app events (af_purchase), by media source' },
+  { name: 'Branch', ch: '', kind: 'sales', where: 'Branch → Data Feeds → Exports → purchase events by channel' },
+];
+let partner = null;
+$('#partners').innerHTML = `<div class="k">Ad platforms</div>${PARTNERS.filter(p => p.kind === 'ads').map(p => `<button type="button" class="pchip" data-p="${esc(p.name)}">${esc(p.name)}</button>`).join('')}
+  <div class="k">Sales, payments &amp; attribution</div>${PARTNERS.filter(p => p.kind === 'sales').map(p => `<button type="button" class="pchip" data-p="${esc(p.name)}">${esc(p.name)}</button>`).join('')}`;
+$$('.pchip').forEach(b => b.onclick = () => {
+  partner = PARTNERS.find(p => p.name === b.dataset.p);
+  $$('.pchip').forEach(x => x.classList.toggle('on', x === b));
+  $('#partnerUp').hidden = false;
+  $('#partnerLabel').textContent = `Upload your ${partner.name} report (CSV)`;
+  $('#partnerHint').innerHTML = `Where to find it: ${esc(partner.where)}.<br>${partner.kind === 'ads'
+    ? 'Needs date, campaign, ad, spend, impressions, clicks; conversions and sales value if the report has them. Every row is tagged as ' + esc(partner.ch) + '.'
+    : 'Needs a date, the order value and, if possible, the traffic source (UTM source / media source). One row per order is fine.'}`;
+  $('#filePartner').value = '';
+});
+$('#filePartner').onchange = async () => {
+  const f = $('#filePartner').files[0]; if (!f || !partner) return;
+  try {
+    const raw = parseCSV(await f.text());
+    if (!raw.length) throw new Error('The file has no rows.');
+    if (partner.kind === 'ads') mergeIn({ rows: raw.map(r => ({ ...r, channel: partner.ch })), label: partner.name });
+    else mergeIn({ orders: ordersFromReport(raw, partner.ch), label: partner.name, ordersFrom: partner.name });
+  } catch (e) { setStatus(`Could not read the ${esc(partner.name)} file: ${esc(e.message)}`, 'err'); }
+};
+
+// A sales report (one row per order, or already per day) → { date, channel, orders, revenue } per day and source
+function ordersFromReport(raw, fallbackCh) {
+  const get = (r, names) => { for (const k of Object.keys(r)) if (names.includes(k.trim().toLowerCase())) return r[k]; };
+  const money = v => Number(String(v ?? '').replace(/[₹,\s]/g, '')) || 0;
+  const map = new Map();
+  for (const r of raw) {
+    const date = cleanOrders([{ date: get(r, ['date', 'order date', 'created_at', 'created at', 'event_time', 'event time', 'day']) }])[0]?.date;
+    if (!date) continue;
+    const ch = get(r, ['utm_source', 'utm source', 'source', 'channel', 'media_source', 'media source', 'attribution', 'origin']) || fallbackCh || 'Direct';
+    const k = date + '||' + ch;
+    const x = map.get(k) || { date, channel: ch, orders: 0, revenue: 0 };
+    x.orders += money(get(r, ['orders', 'units ordered', 'order count', 'total orders'])) || 1;
+    x.revenue += money(get(r, ['revenue', 'total', 'amount', 'order total', 'total_price', 'order value', 'ordered product sales', 'event_revenue', 'event revenue', 'gmv']));
+    map.set(k, x);
+  }
+  if (!map.size) throw new Error('No dated rows found. The report needs a date column.');
+  return [...map.values()];
+}
 
 // Settings remembered on this device only
 const remember = (sel, key) => {
@@ -210,10 +343,98 @@ const remember = (sel, key) => {
 };
 remember('#webhook', 'drishti-webhook');
 remember('#email', 'drishti-email');
-remember('#flatDays', 'drishti-flat-days');
+
+// ---------------------------------------------------------------------------
+// YOUR RULES: a list you can add to, edit and remove from.
+// Each rule is a sentence with blanks, e.g. "Pause an ad if cost per sale is above ₹[800] for [3] days".
+// Saved on this device; sent to the agents with every run.
+// ---------------------------------------------------------------------------
+function loadRules() {
+  let saved = null;
+  try { saved = JSON.parse(store.get('drishti-rules') || 'null'); } catch {}
+  // Older visits saved only the flat-revenue days; turn that into the first rule.
+  const oldDays = store.get('drishti-flat-days');
+  const list = Array.isArray(saved) ? saved : oldDays ? [{ type: 'flat', a: Number(oldDays) }] : DEFAULT_RULES;
+  state.rules = list.map(cleanRule).filter(Boolean);
+}
+function saveRules() { store.set('drishti-rules', JSON.stringify(state.rules)); renderRuleSum(); }
+
+// The rule as a sentence with number boxes in place of the blanks
+function ruleInputs(r, i) {
+  const t = RULE_TYPES[r.type];
+  const box = k => `<input class="field tiny" type="number" data-i="${i}" data-k="${k}" value="${r[k]}" min="${t[k].min}" max="${t[k].max}" step="${t[k].step}" aria-label="Rule ${i + 1}, ${k === 'a' ? 'first' : 'second'} number">`;
+  // split on the blanks so the boxes go exactly where {a} and {b} are
+  return t.text.split(/(\{[ab]\})/).map(part => (part === '{a}' ? box('a') : part === '{b}' ? box('b') : esc(part))).join('');
+}
+
+function renderRules() {
+  $('#ruleList').innerHTML = state.rules.length
+    ? state.rules.map((r, i) => `<li><span class="rl-agent" style="--c:var(--${RULE_TYPES[r.type].agent})">${esc(agentName(RULE_TYPES[r.type].agent))}</span>
+        <span class="rl-text">${ruleInputs(r, i)}</span>
+        <button class="mini" type="button" data-del="${i}" aria-label="Remove this rule">✕</button></li>`).join('')
+    : '<li class="none">No rules yet. The agents will still recommend fixes, but nothing runs on your standing orders.</li>';
+  // typing in a box updates that rule
+  $$('#ruleList input').forEach(inp => inp.onchange = () => {
+    const r = state.rules[Number(inp.dataset.i)];
+    r[inp.dataset.k] = Number(inp.value);
+    Object.assign(r, cleanRule(r)); inp.value = r[inp.dataset.k];
+    saveRules();
+  });
+  $$('#ruleList [data-del]').forEach(b => b.onclick = () => { state.rules.splice(Number(b.dataset.del), 1); saveRules(); renderRules(); });
+  renderRuleSum();
+}
+
+// The short version in the controls row: the first rule, editable, plus "+N more"
+function renderRuleSum() {
+  const r = state.rules[0];
+  $('#ruleSum').innerHTML = r ? `${ruleInputs(r, 0)}${state.rules.length > 1 ? ` <b class="more">+${state.rules.length - 1} more</b>` : ''}` : '<i>No rules set</i>';
+  $$('#ruleSum input').forEach(inp => inp.onchange = () => {
+    const rule = state.rules[0];
+    rule[inp.dataset.k] = Number(inp.value);
+    Object.assign(rule, cleanRule(rule));
+    saveRules(); renderRules();
+  });
+}
+
+$('#ruleType').innerHTML = Object.entries(RULE_TYPES).map(([k, t]) => `<option value="${k}">${esc(t.text.replace('{a}', '…').replace('{b}', '…'))}</option>`).join('');
+$('#addRule').onclick = () => {
+  const t = RULE_TYPES[$('#ruleType').value];
+  state.rules.push({ type: $('#ruleType').value, a: t.a.def, b: t.b?.def });
+  saveRules(); renderRules();
+  $('#ruleList li:last-child input')?.focus();
+};
+$('#resetRules').onclick = () => { state.rules = DEFAULT_RULES.map(r => ({ ...r })); saveRules(); renderRules(); };
+$('#rulesBtn').onclick = () => {
+  const open = $('#rulesPanel').hidden;
+  $('#rulesPanel').hidden = !open;
+  $('#rulesBtn').setAttribute('aria-expanded', String(open));
+  fitLoop();
+};
+loadRules();
+renderRules();
 
 // Ask the backend which AI engine is on (Groq / Gemini / rules)
-fetch(API + '/api/health').then(r => r.json()).then(h => { state.engine = h.engine; $('#engine').textContent = h.engine; }).catch(() => {});
+// and which models it can switch between (for the picker in ②).
+fetch(API + '/api/health').then(r => r.json()).then(h => {
+  state.engine = h.engine;
+  state.models = h.models || [];
+  renderModelPick();
+}).catch(() => renderModelPick());
+
+// The model picker: the default model is always on; choosing another swaps it for the next run.
+// "Built-in rules" runs the same agent maths with no AI model at all.
+function renderModelPick() {
+  const saved = store.get('drishti-model');
+  const opts = [...state.models, { id: 'rules', label: 'Built-in rules (no AI)' }];
+  $('#modelPick').innerHTML = opts.map(m => `<option value="${esc(m.id)}">${esc(m.label)}</option>`).join('');
+  $('#modelPick').value = opts.some(m => m.id === saved) ? saved : opts[0].id;
+}
+$('#modelPick').onchange = () => {
+  store.set('drishti-model', $('#modelPick').value);
+  const label = $('#modelPick').selectedOptions[0]?.textContent;
+  watchLine(`🔁 Model swapped to <b>${esc(label)}</b>. The next run thinks with it.`);
+  log(`Model swapped to ${label}`);
+};
 
 // ---------------------------------------------------------------------------
 // ① DATA COMING IN: one tile per source, hover to peek at the rows
@@ -232,7 +453,7 @@ function sourceList() {
     return { key: ch, icon: ICONS[ch] || '📊', name: ch === 'JioHotstar' ? 'JioHotstar · TV' : ch + ' Ads',
       sub: `${ads.size} ad${ads.size > 1 ? 's' : ''} · ${inr(today.reduce((s, r) => s + r.spend, 0))}/day`, on: true };
   });
-  list.push({ key: 'Shopify', icon: '🛍️', name: 'Shopify orders', on: d.cleanOrders.length > 0,
+  list.push({ key: 'Shopify', icon: '🛍️', name: `${d.ordersFrom || 'Shopify'} orders`, on: d.cleanOrders.length > 0,
     sub: d.cleanOrders.length ? `${Math.round(d.cleanOrders.filter(o => o.date === last).reduce((s, o) => s + o.orders, 0)).toLocaleString('en-IN')} orders yesterday` : 'not connected · ROAS estimated' });
   list.push({ key: 'Competitors', icon: '🕵️', name: 'Competitor ads', on: d.cleanComp.length > 0,
     sub: d.cleanComp.length ? `${new Set(d.cleanComp.map(c => c.competitor)).size} rivals · Ad Library` : 'not connected' });
@@ -254,9 +475,112 @@ function renderSources() {
     const upd = (state.updates[s.key] || [])[0];
     return `<div class="src ${s.on ? '' : 'off'}" id="src-${s.key.replace(/\W/g, '')}" data-tip="src" data-key="${esc(s.key)}" tabindex="0">
       <span class="ic">${s.icon}</span><b>${esc(s.name)}</b><small>${esc(s.sub)}</small>
+      <span class="live" data-live="${esc(s.key)}"></span>
       ${upd ? `<span class="upd">↺ ${esc(upd)}</span>` : ''}<span class="stream"></span></div>`;
   }).join('');
+  tick();
 }
+
+// ---------------------------------------------------------------------------
+// LIVE COUNTERS: every tile counts up all the time, at the pace of the latest day
+// in the data (views, clicks, spend, orders "today so far"). When an agent pauses
+// or holds something, that channel's pace drops, so you can watch the fix land.
+// ---------------------------------------------------------------------------
+const nIN = n => Math.floor(n).toLocaleString('en-IN');
+
+// Share of today gone by in India (0 → midnight, 1 → just before the next midnight)
+function dayShare() {
+  const ist = new Date(Date.now() + 5.5 * 3600e3);
+  return (ist.getUTCHours() * 3600 + ist.getUTCMinutes() * 60 + ist.getUTCSeconds()) / 86400;
+}
+
+// Per-tile totals for one whole day, from the latest day in the data (the pace of the counters)
+function dayTotals(key) {
+  const d = state.data; if (!d) return null;
+  const last = [...new Set(d.clean.map(r => r.date))].sort().slice(-1)[0];
+  if (key === 'Shopify') {
+    const o = d.cleanOrders.filter(x => x.date === last);
+    return o.length ? { orders: o.reduce((s, x) => s + x.orders, 0), revenue: o.reduce((s, x) => s + x.revenue, 0) } : null;
+  }
+  const rows = d.clean.filter(r => r.channel === key && r.date === last);
+  if (!rows.length) return null;
+  const t = rows.reduce((s, r) => ({ spend: s.spend + r.spend, views: s.views + r.impressions, clicks: s.clicks + r.clicks }), { spend: 0, views: 0, clicks: 0 });
+  // Paused / held ads stop spending: scale the whole tile down by the money the agents cut
+  const keep = t.spend ? Math.max(0, 1 - (state.paceCut[key] || 0) / t.spend) : 1;
+  return { spend: t.spend * keep, views: t.views * keep, clicks: t.clicks * keep };
+}
+
+// Running counts per tile. They start at "today so far" and then only ever go UP,
+// by the tile's pace × the seconds since the last tick, with a little randomness so
+// they move like real traffic. A paused ad slows the pace; it never takes counts away.
+const counts = {};
+function grow(key, t) {
+  const now = Date.now();
+  const c = counts[key];
+  if (!c) { counts[key] = { at: now, v: Object.fromEntries(Object.entries(t).map(([k, x]) => [k, x * dayShare()])) }; return counts[key].v; }
+  const secs = Math.min(5, (now - c.at) / 1000);
+  c.at = now;
+  for (const k of Object.keys(t)) c.v[k] += (t[k] / 86400) * secs * (0.6 + Math.random() * 0.8);
+  return c.v;
+}
+function liveText(key) {
+  const now = Date.now();
+  if (key === 'News') return `<i></i>checked ${Math.floor((now / 1000) % 45)}s ago · next in ${45 - Math.floor((now / 1000) % 45)}s`;
+  if (key === 'Competitors') return state.data?.cleanComp.length ? `<i></i>Ad Library scanned ${Math.floor((now / 1000) % 60)}s ago` : '';
+  if (key === 'Calendar') {
+    const e = EVENTS.map(x => ({ ...x, t: new Date(x.date + 'T00:00:00+05:30') - now })).find(x => x.t > 0);
+    if (!e) return '';
+    const sec = Math.floor(e.t / 1000);
+    return `<i></i>${Math.floor(sec / 86400)}d ${String(Math.floor(sec / 3600) % 24).padStart(2, '0')}:${String(Math.floor(sec / 60) % 60).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')} to ${esc(e.name)}`;
+  }
+  const t = dayTotals(key); if (!t) return '';
+  const v = grow(key, t);
+  if (key === 'Shopify') return `<i></i><b>${nIN(v.orders)}</b> orders · <b>₹${nIN(v.revenue)}</b> today`;
+  // 👁 views · 👆 clicks · ₹ spent, all "today so far"
+  return `<i></i><span title="views today">👁 <b>${nIN(v.views)}</b></span> · <span title="clicks today">👆 <b>${nIN(v.clicks)}</b></span> · <span title="spent today"><b>₹${nIN(v.spend)}</b></span>`;
+}
+
+function tick() {
+  $$('.src .live').forEach(el => {
+    const html = liveText(el.dataset.live);
+    if (html !== el.innerHTML) el.innerHTML = html;
+  });
+}
+setInterval(tick, 1000);
+
+// ---------------------------------------------------------------------------
+// ② is always on: between full runs the Orchestrator keeps watching the streams.
+// One line under the agent strip shows what it just looked at.
+// ---------------------------------------------------------------------------
+let rowsSeen = 0;
+function watchLine(html) {
+  const el = $('#watch');
+  el.innerHTML = `<i class="live-dot"></i><span>${html}</span>`;
+  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+}
+function watchBeat() {
+  if (state.running || !state.data) return;
+  const ads = sourceList().filter(s => s.on && dayTotals(s.key) && s.key !== 'Shopify');
+  if (!ads.length) return;
+  const s = ads[Math.floor(Math.random() * ads.length)];
+  const fresh = 20 + Math.floor(Math.random() * 180);
+  rowsSeen += fresh;
+  const model = $('#modelPick').selectedOptions[0]?.textContent || 'rules';
+  const nRules = state.rules.length;
+  watchLine(`<b>Watching</b> · read +${fresh} new rows from ${esc(s.name)} · ${nRules} rule${nRules === 1 ? '' : 's'} checked · nothing urgent · <span class="m">${esc(cut(model, 34))}</span>`);
+}
+setInterval(watchBeat, 3200);
+
+// ---------------------------------------------------------------------------
+// The top bar slides away when you scroll down and comes back when you scroll up.
+// ---------------------------------------------------------------------------
+let lastY = scrollY;
+addEventListener('scroll', () => {
+  const y = scrollY;
+  if (Math.abs(y - lastY) < 6) return;          // ignore tiny jiggles
+  $('.bar').classList.toggle('hide', y > lastY && y > 60);
+  lastY = y;
+}, { passive: true });
 
 // Data streaming in: dots move along each source tile while the loop reads it.
 function setFlowing(on) { $$('.src:not(.off)').forEach(el => el.classList.toggle('flowing', on)); }
@@ -303,7 +627,11 @@ const PACE = { thought: 650, working: 500, done: 750, alert: 750 };
 
 async function showEvent(e) {
   if (e.type === 'start') {
-    $('#engine').textContent = e.engine;
+    // If the picked model was busy the backend falls back to another one; say so.
+    const picked = $('#modelPick').selectedOptions[0]?.textContent;
+    if (picked && !picked.startsWith(e.engine) && !(e.engine === 'Built-in rules' && $('#modelPick').value === 'rules')) {
+      addFeed(`<span class="tag">model</span><span class="txt">Thinking with ${esc(e.engine)}.</span>`, 'thought', 'ORC');
+    }
     addFeed(`<span class="tag">RUN</span><span class="txt">Loop ${state.loop} for <b>${esc(e.brand)}</b>: ${e.period.days} days of data (${e.period.from} → ${e.period.to}), ${esc(e.totals.channels.join(', '))}, ${inr(e.totals.spend)} spend.</span>`, '', 'ORC');
     stage(2, '<b>② Agents</b><small>thinking…</small>');
     await wait(400);
@@ -346,6 +674,7 @@ async function run() {
   $('#rows').innerHTML = '';
   $('#actCount').textContent = ''; $('#statusPill').textContent = ''; $('#statusPill').className = 'pill';
 
+  watchLine(`<b>Full check running</b> · loop ${state.loop} · ${esc($('#modelPick').selectedOptions[0]?.textContent || '')}`);
   // ① Data comes in first
   stage(1, '<b>① Data</b><small>reading…</small>');
   setFlowing(true);
@@ -358,7 +687,8 @@ async function run() {
       const res = await fetch(API + '/api/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ brand: state.data.brand, category: state.data.category, rows: state.data.rows, orders: state.data.orders,
-          competitors: state.data.competitors || [], breakevenRoas: Number($('#breakeven').value) || 2, flatlineDays: Number($('#flatDays').value) || 2 }),
+          competitors: state.data.competitors || [], breakevenRoas: Number($('#breakeven').value) || 2,
+          rules: state.rules, model: $('#modelPick').value || undefined }),
       });
       if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw new Error(j.error || 'Server error ' + res.status); }
       const rd = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
@@ -380,6 +710,7 @@ async function run() {
   state.running = false;
   btn.disabled = false; btn.textContent = '↻ Run the loop again';
   hubIdle();
+  watchLine('<b>Back to watching</b> · the next full check re-reads everything the agents just changed');
 }
 $('#runBtn').onclick = run;
 $('#runBtn').classList.add('idle');
@@ -493,6 +824,10 @@ async function playActions(r) {
 // After an action, the changed data goes back into ① (the next run reads it)
 async function feedBack(a, line) {
   const text = line || a.feedback || a.title;
+  // Moves that stop spending slow that channel's live counter in ① (undo puts it back)
+  if (['pause', 'hold', 'rule', 'cohort', 'migrate', 'shift'].includes(a.kind) && a.impact && a.channel) {
+    state.paceCut[a.channel] = Math.max(0, (state.paceCut[a.channel] || 0) + (a.state === 'undone' ? -1 : 1) * a.impact);
+  }
   const keys = [a.channel, a.to].filter(Boolean).map(k => (k === 'Calendar' ? 'Calendar' : k));
   const flow = $('#flow41');
   flow.classList.add('on', 'pulse');
@@ -650,7 +985,8 @@ const TIPS = {
       <p>Per ad × region: spend, impressions, reach, clicks, conversions and the revenue ${esc(key)} <i>claims</i>.</p>
       <div class="k">Latest pull · ${esc(last)} · top ${Math.min(4, rows.length)} of ${rows.length}</div>
       ${glimpseRows(rows.slice(0, 4), [['Ad', r => cut(r.ad, 24)], ['Region', r => cut(r.region, 12)], ['Spend', r => inr(r.spend), 'n'], ['Clicks', r => r.clicks.toLocaleString('en-IN'), 'n'], ['Claimed', r => inr(r.platform_revenue), 'n']])}
-      <p style="color:var(--muted)">Day total: ${inr(tot.spend)} spend · ${tot.clicks.toLocaleString('en-IN')} clicks · ${inr(tot.rev)} claimed sales</p>${fedBlock(key)}`;
+      <p style="color:var(--muted)">Day total: ${inr(tot.spend)} spend · ${tot.clicks.toLocaleString('en-IN')} clicks · ${inr(tot.rev)} claimed sales</p>
+      <p style="color:var(--muted)">The live line counts today’s views, clicks and spend so far, at that day’s pace. Paused ads slow it down. On a connected account it refreshes from the API every hour.</p>${fedBlock(key)}`;
   },
   agent(el) {
     const a = agent(el.dataset.id);
@@ -693,7 +1029,17 @@ const TIPS = {
     return `<h4>④ → ①  Updated data fed back</h4><p>Every action changes the account: paused ads stop spending, moved budgets show up on the new channel. The next run reads this and checks whether the fix worked.</p>
       ${all.length ? `<ul>${[...new Set(all)].slice(0, 5).map(u => `<li class="new">↺ ${esc(u)}</li>`).join('')}</ul>` : ''}`;
   },
-  rule() { return `<h4>Your standing rule</h4><p>If a campaign’s revenue stays flat for this many days and it is below break-even, the Budget agent puts it on hold on its own and emails you a report. In a market shock it asks first.</p>`; },
+  rule() {
+    return `<h4>Your standing rules</h4><p>Orders the agents follow on their own, then email you a report. If tracking is broken or the market is in shock, they ask first.</p>
+      <ul>${state.rules.map(r => `<li>${esc(ruleText(r))}</li>`).join('') || '<li>None set</li>'}</ul><p style="color:var(--muted)">Press “Add / edit rules” to add more.</p>`;
+  },
+  model() {
+    return `<h4>The model the agents think with</h4><p>It is always on: the Orchestrator uses it to decide which agent to call and to explain each step. Pick another model to swap it for the next run; if it is busy, Drishti falls back to the next one.</p>
+      <p>“Built-in rules” runs the same agent maths with no AI model, so every number can be traced to a formula.</p>`;
+  },
+  watch() {
+    return `<h4>Always watching</h4><p>Between full checks the Orchestrator keeps reading the streams in ① and your rules. A full check (Run) re-reads everything, diagnoses, recommends and acts.</p><p style="color:var(--muted)">${nIN(rowsSeen)} rows read since you opened this page.</p>`;
+  },
   email() { return `<h4>✉️ Try it with your own email address</h4><p><b>Replace this email address with yours</b> to receive the action reports and feel the live demo: press Run, and the agents email you what they did.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">Sent via FormSubmit. The first time, your inbox gets a one-time “Activate” email; click it, run the loop again, and reports arrive.</p>`; },
   'brand-glowveda'() { return `<h4>Glowveda</h4><p>Shreya’s skincare brand · ₹1.5 Cr/month on Facebook, Instagram, Google and JioHotstar TV. Fictional sample data.</p>`; },
   'brand-crunchkart'() { return `<h4>Crunchkart</h4><p>Aarush’s snacks brand · ₹9 L/month on Facebook, Instagram and Google. Fictional sample data.</p>`; },
@@ -711,6 +1057,9 @@ function apiCall(a) {
     pacing: 'Budget plan → 15% held in reserve',
     tracking: `${a.channel} budget locked; alert to the tracking owner`,
     prep: 'Creative Studio → variants saved as drafts, ready to A/B',
+    rule: a.ruleType === 'cap' ? `${a.channel} API → daily budget lowered to your cap`
+      : a.ruleType === 'roas' ? `${a.channel} Marketing API → campaign status = PAUSED (“on hold”)`
+      : `${a.channel} API → ad status = PAUSED`,
   }[a.kind] || a.title;
 }
 
@@ -823,4 +1172,5 @@ $('#ownBtn').addEventListener('click', fitLoop);
 // A link ending in ?run starts the agents immediately (handy for sharing a live demo).
 loadSample();
 hubIdle();
+setTimeout(watchBeat, 500); // ② starts watching straight away
 if (new URLSearchParams(location.search).has('run')) setTimeout(run, 300);

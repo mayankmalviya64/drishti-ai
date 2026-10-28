@@ -49,7 +49,10 @@ code { background: var(--soft); padding: 0 4px; border-radius: 4px; }
   display: flex; align-items: center; gap: 14px; padding: 10px 24px;
   background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 20;
+  transition: transform .25s ease;
 }
+/* scrolling down slides the bar out of view; scrolling up brings it back (app.js) */
+.bar.hide { transform: translateY(-100%); }
 .logo { font: 700 18px "Space Grotesk", sans-serif; color: var(--ink); text-decoration: none; white-space: nowrap; }
 .tagline { color: var(--muted); font-size: 13px; }
 .bar nav { margin-left: auto; display: flex; align-items: center; gap: 16px; }
@@ -78,6 +81,25 @@ code { background: var(--soft); padding: 0 4px; border-radius: 4px; }
 .chip span { display: inline-block; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; color: var(--muted); }
 .chip input:checked + span { border-color: var(--amber); color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--panel)); }
 .rule { font-size: 13px; }
+.rule .more { color: var(--sky-ink); font-weight: 600; margin-left: 4px; }
+
+/* ---------- your rules panel ---------- */
+.rp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 8px; }
+.rp-head .hint { margin: 0; }
+.rule-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.rule-list li { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: 13px; background: var(--soft); }
+.rule-list li.none { color: var(--muted); }
+.rule-list .rl-text { flex: 1; }
+.rl-agent { font-size: 11px; font-weight: 600; color: #fff; background: var(--c); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.rule-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rule-add .field { width: auto; max-width: 100%; margin: 0; }
+
+/* ---------- partner chips ---------- */
+.partners .k { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 6px 0 4px; }
+.pchip { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 4px 10px; margin: 0 4px 6px 0; font: 500 12.5px Inter, sans-serif; cursor: pointer; }
+.pchip:hover { border-color: var(--sky); }
+.pchip.on { background: var(--sky-soft); border-color: var(--sky); color: var(--sky-ink); }
+.partner-up { max-width: 560px; margin-top: 6px; }
 .field { width: 100%; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 7px 10px; font: 13px Inter, sans-serif; margin-bottom: 8px; }
 .field:focus { outline: 2px solid var(--sky-soft); border-color: var(--sky); }
 .field.tiny { width: 54px; margin: 0 4px; padding: 3px 6px; display: inline-block; }
@@ -141,7 +163,21 @@ code { background: var(--soft); padding: 0 4px; border-radius: 4px; }
 .q-sub { font-size: 11.5px; color: var(--muted); margin-left: auto; text-align: right; }
 .step { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: var(--sky); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 12px; }
 .q-body { padding: 10px 12px; overflow-y: auto; flex: 1; min-height: 0; }
-.engine { margin-left: auto; font-size: 11px; color: var(--muted); background: var(--soft); padding: 3px 8px; border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.engine { margin-left: auto; font-size: 11px; color: var(--muted); background: var(--soft); padding: 2px 4px 2px 9px; border-radius: 999px; white-space: nowrap; display: inline-flex; align-items: center; max-width: 60%; cursor: pointer; }
+.engine select { border: 0; background: transparent; color: var(--ink); font: 500 11px Inter, sans-serif; cursor: pointer; max-width: 100%; text-overflow: ellipsis; }
+.engine select:focus-visible { outline: 2px solid var(--sky); border-radius: 6px; }
+/* ② "always watching" line under the agent strip */
+.watch { font-size: 11.5px; color: var(--muted); padding: 5px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 27px; cursor: help; }
+.watch b { color: var(--ink); font-weight: 600; }
+.watch .m { color: var(--sky-ink); }
+.watch.bump span { animation: slide .35s ease-out; display: inline; }
+/* idle agents breathe softly so ② never looks switched off */
+.agent-strip.watching .agent-node:not(.working):not(.done):not(.alert) .dot { animation: breathe 3.2s ease-in-out infinite; }
+.agent-strip.watching .agent-node:nth-child(2) .dot { animation-delay: .5s; }
+.agent-strip.watching .agent-node:nth-child(3) .dot { animation-delay: 1s; }
+.agent-strip.watching .agent-node:nth-child(4) .dot { animation-delay: 1.5s; }
+.agent-strip.watching .agent-node:nth-child(5) .dot { animation-delay: 2s; }
+.agent-strip.watching .agent-node:nth-child(6) .dot { animation-delay: 2.5s; }
 .pill { margin-left: auto; font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
 .pill:empty { display: none; }
 
@@ -187,11 +223,16 @@ code { background: var(--soft); padding: 0 4px; border-radius: 4px; }
 .src .ic { position: absolute; left: 9px; top: 8px; font-size: 19px; }
 .src b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .src small { display: block; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the live counter: always ticking */
+.src .live { display: block; font-size: 11px; color: var(--sky-ink); font-variant-numeric: tabular-nums; line-height: 1.35; }
+.src .live span { white-space: nowrap; }
+.src .live b { display: inline; font-size: inherit; font-weight: 600; }
+.src .live i, .live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-right: 5px; vertical-align: 1px; animation: livePulse 1.4s ease-in-out infinite; }
 .src .upd { display: block; font-size: 11px; color: var(--green); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .src.off { opacity: .5; }
 /* the little stream of dots = data flowing in */
-.src .stream { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background-image: radial-gradient(circle, var(--sky) 1.2px, transparent 1.6px); background-size: 10px 3px; opacity: .45; }
-.src.flowing .stream { opacity: 1; animation: dashR .5s linear infinite; }
+.src .stream { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background-image: radial-gradient(circle, var(--sky) 1.2px, transparent 1.6px); background-size: 10px 3px; opacity: .55; animation: dashR 1.8s linear infinite; }
+.src.flowing .stream { opacity: 1; animation-duration: .5s; }
 .src.off .stream { display: none; }
 .src.fed { animation: fed 1.6s ease-out; }
 
@@ -356,6 +397,8 @@ th { color: var(--muted); font-weight: 600; }
 footer.foot { text-align: center; font-size: 12px; color: var(--muted); padding: 16px 24px 28px; }
 
 /* ---------- motion ---------- */
+@keyframes livePulse { 50% { opacity: .3; transform: scale(.8); } }
+@keyframes breathe { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 18%, transparent); } }
 @keyframes slide { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes fromRight { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
 @keyframes bob { 50% { transform: translateY(-3px); } }
@@ -385,6 +428,9 @@ footer.foot { text-align: center; font-size: 12px; color: var(--muted); padding:
   .pitch, .controls, .loop, .details, .results { padding-left: 16px; padding-right: 16px; }
   .own { width: calc(100% - 32px); }
   #tab-upload.active { grid-template-columns: minmax(0, 1fr); }
+  .rule-list li { flex-wrap: wrap; }
+  .engine { max-width: 55%; }
+  .rule-add .field { width: 100%; }
   .pitch h1 { font-size: 18px; }
   .field.email, .email-wrap { width: 100%; }
   .ctl[data-tip="email"] { flex: 1 1 220px; }

@@ -1,10 +1,10 @@
 // api/health.js
 // GET → tells the page which AI engine and connectors are switched on.
-import { engineLabel } from '../lib/llm.js';
+import { engineLabel, models } from '../lib/llm.js';
 import { json, preflight } from '../lib/http.js';
 
 export const OPTIONS = preflight;
 
 export function GET() {
-  return json({ ok: true, engine: engineLabel(), slackDefault: !!process.env.SLACK_WEBHOOK_URL });
+  return json({ ok: true, engine: engineLabel(), models: models(), slackDefault: !!process.env.SLACK_WEBHOOK_URL });
 }
