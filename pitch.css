@@ -131,7 +131,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .kpi { text-align: center; padding: 20px 14px; }
 .kpi .lbl { color: var(--muted); font-size: 13px; font-weight: 600; }
 .kpi .num { font-size: clamp(30px, 4vw, 46px); font-weight: 700; margin: 6px 0 2px; }
-.kpi .num s { color: var(--muted); font-size: .55em; text-decoration-thickness: 2px; margin-right: 6px; }
+/* the "before" number: muted with an arrow (a strike-through line can make 1 look like 4 on a projector) */
+.kpi .num s, .fact .num s { color: var(--muted); font-size: .55em; text-decoration: none; margin-right: 6px; }
+.kpi .num s::after, .fact .num s::after { content: " →"; }
 .kpi .goal { font-size: 12px; font-weight: 600; }
 .goal.met { color: var(--green); }
 .goal.near { color: var(--amber); }
