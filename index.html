@@ -86,10 +86,15 @@
       <a href="story.html"><span data-icon="book"></span>How it works</a>
     </nav>
 
-    <!-- Where action reports are emailed. Visitors can type their own address. -->
+    <!-- Where action reports go: WhatsApp (default) or email. Visitors can type their own number / address. -->
     <div class="side-report">
-      <div class="side-k">Action reports to <button type="button" class="info" data-tip="email" aria-label="About email reports"><span data-icon="info"></span></button></div>
-      <span class="email-wrap"><input class="field email" id="email" type="email" placeholder="Type your email address" value="mayankmalviya64@gmail.com" aria-label="Email address for action reports (replace with yours)"><span class="pen" data-icon="mail" aria-hidden="true"></span></span>
+      <div class="side-k">Action reports to <button type="button" class="info" data-tip="email" aria-label="About action reports"><span data-icon="info"></span></button></div>
+      <div class="via" role="radiogroup" aria-label="Send action reports by">
+        <button type="button" role="radio" data-via="whatsapp" aria-checked="true"><span data-icon="chat"></span>WhatsApp</button>
+        <button type="button" role="radio" data-via="email" aria-checked="false"><span data-icon="mail"></span>Email</button>
+      </div>
+      <span class="email-wrap" id="phoneWrap"><input class="field email" id="phone" type="tel" placeholder="WhatsApp no. with country code" aria-label="WhatsApp number for action reports, with country code"><span class="pen" data-icon="chat" aria-hidden="true"></span></span>
+      <span class="email-wrap" id="emailWrap" hidden><input class="field email" id="email" type="email" placeholder="Type your email address" value="mayankmalviya64@gmail.com" aria-label="Email address for action reports (replace with yours)"><span class="pen" data-icon="mail" aria-hidden="true"></span></span>
     </div>
 
     <div class="side-foot">

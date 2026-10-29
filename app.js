@@ -493,6 +493,18 @@ const remember = (sel, key) => {
 };
 remember('#webhook', 'drishti-webhook');
 remember('#email', 'drishti-email');
+remember('#phone', 'drishti-phone');
+
+// WhatsApp / Email switch for action reports (WhatsApp is the default; the choice is remembered)
+const reportVia = () => $('.via [aria-checked="true"]').dataset.via;
+function setVia(via) {
+  $$('.via button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.via === via)));
+  $('#phoneWrap').hidden = via !== 'whatsapp';
+  $('#emailWrap').hidden = via !== 'email';
+  store.set('drishti-via', via);
+}
+$$('.via button').forEach(b => b.onclick = () => setVia(b.dataset.via));
+setVia(store.get('drishti-via') || 'whatsapp');
 
 // ---------------------------------------------------------------------------
 // YOUR RULES: a list you can add to, edit and remove from.
@@ -866,6 +878,9 @@ async function run() {
   if (!state.data?.rows?.length) { openSheet('#ownData'); return setStatus('Load some data first.', 'err'); }
   state.running = true; state.loop++;
   state.agentLog = {}; state.mail = {};
+  // A fresh id per run, so WhatsApp button taps land on the right run's actions
+  state.runId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  clearInterval(state.waPoll);
   const btn = $('#runBtn');
   btn.disabled = true; btn.classList.remove('idle'); btn.innerHTML = 'Agent running…';
   state.result = null;   // so the boxes start from step ① again
@@ -968,11 +983,11 @@ function actCard(a) {
   const m = state.mail[a.id];
   const mail = !m ? '' : m.href
     ? `<a class="mail" href="${esc(m.href)}" title="${esc(m.text)}">${ic('mail')} ${esc(m.text)}</a>`
-    : `<span class="mail ${m.ok ? 'sent' : ''}" title="${esc(m.text)}">${ic('mail')} ${esc(m.text)}</span>`;
+    : `<span class="mail ${m.ok ? 'sent' : ''}" title="${esc(m.text)}">${ic(m.icon || 'mail')} ${esc(m.text)}</span>`;
   if (st === 'pending') return `<div class="card-a pending">…</div>`;
   if (st === 'executing') return `<div class="card-a executing" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('zap')} ${esc(a.execute || a.title)}</div></div>`;
   if (st === 'waiting') return `<div class="card-a waiting" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('clock')} ${esc(a.title)}</div>
-    <div class="foot"><span class="badge wait">Your call</span><button class="mini yes" data-act="approve" data-id="${a.id}">Approve</button><button class="mini" data-act="reject" data-id="${a.id}">Reject</button></div></div>`;
+    <div class="foot">${a.held ? '<span class="badge hold">On hold</span>' : '<span class="badge wait">Your call</span>'}<button class="mini yes" data-act="approve" data-id="${a.id}">Approve</button>${a.held ? '' : `<button class="mini" data-act="hold" data-id="${a.id}">Hold</button>`}<button class="mini" data-act="reject" data-id="${a.id}">Reject</button></div></div>`;
   if (st === 'done') return `<div class="card-a done" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('check')} ${esc(a.feedback || a.title)}</div>
     <div class="foot"><span class="badge auto">${a.tier === 'auto' ? (a.rule ? 'Auto · your rule' : 'Auto') : 'Approved'}${a.sentTo ? ' · sent to ' + esc(a.sentTo) : ''}</span>${a.tier === 'auto' ? `<button class="mini" data-act="undo" data-id="${a.id}">Undo</button>` : ''}${mail}</div></div>`;
   return `<div class="card-a ${st}" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${st === 'rejected' ? '✕ Rejected: nothing changed' : '↩ Rolled back: ' + esc(a.title)}</div>
@@ -1044,8 +1059,8 @@ async function playActions(r) {
   }
   // Back to the top so the first (most important) rows are in view
   $('#rows').scrollTo({ top: 0, behavior: FAST ? 'auto' : 'smooth' });
-  // One email for everything the agents did on their own this run (plus what waits for you)
-  await emailReport(r.actions.filter(a => a.state === 'done'), r.actions.filter(a => a.state === 'waiting'));
+  // One report for everything the agents did on their own this run (plus what waits for you)
+  await sendReport(r.actions.filter(a => a.state === 'done'), r.actions.filter(a => a.state === 'waiting'));
 }
 
 // After an action, the changed data goes back into ① (the next run reads it)
@@ -1071,20 +1086,30 @@ async function feedBack(a, line) {
   if (!state.running) setTimeout(() => flow.classList.remove('on'), 1200);
 }
 
-// Approve / Reject (big moves) and Undo (small ones)
-async function decide(id, act) {
+// Approve / Hold / Reject (big moves) and Undo (small ones).
+// `from` is 'whatsapp' when the tap came from the WhatsApp buttons, so we don't message back twice.
+async function decide(id, act, from) {
   const a = state.result.actions.find(x => x.id === id); if (!a) return;
+  const via = from === 'whatsapp' ? ' on WhatsApp' : '';
+  if (act === 'hold') {
+    a.held = true; updateRow(a);
+    log(`You put "${a.title}" on hold${via}`);
+    if (!from) whatsappNote(`⏸ On hold (set on the site): ${a.title}`);
+    return;
+  }
   if (act === 'approve') {
-    log(`You approved "${a.title}"`);
+    log(`You approved "${a.title}"${via}`);
     a.state = 'executing'; updateRow(a, true);
     await wait(900);
     a.state = 'done'; updateRow(a);
     log(`${agentName(a.agent)} done: ${a.feedback || a.title}`);
     feedBack(a);
-    emailReport([a], []);
+    if (reportVia() === 'email') emailReport([a], []);
+    else if (!from) whatsappNote(`✅ Approved on the site: ${a.feedback || a.title}`);
   } else if (act === 'reject') {
     a.state = 'rejected'; updateRow(a);
-    log(`You rejected "${a.title}"`);
+    log(`You rejected "${a.title}"${via}`);
+    if (!from) whatsappNote(`❌ Rejected on the site: ${a.title}`);
   } else if (act === 'undo') {
     a.state = 'undone'; updateRow(a);
     log(`You rolled back "${a.title}"`);
@@ -1097,6 +1122,73 @@ async function decide(id, act) {
     const j = await res.json();
     if (j.sent) { a.sentTo = j.to; log(`Posted to ${j.to}`); updateRow(a); }
   } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// Action report: on WhatsApp (default) or by email, whichever is picked in the sidebar.
+// ---------------------------------------------------------------------------
+function sendReport(done, waiting) {
+  return reportVia() === 'email' ? emailReport(done, waiting) : whatsappReport(done, waiting);
+}
+
+// WhatsApp: one crisp summary, then Approve / Hold / Reject buttons for each action that needs you.
+// The taps come back through our server; the page checks for them every few seconds.
+const WA_WHY = {
+  'not-configured': 'WhatsApp is not set up on the server yet',
+  'window-closed': 'send "hi" to the Drishti WhatsApp number once, then run again',
+  'number-not-verified': 'this number is not on the WhatsApp test list yet',
+  'token-expired': 'WhatsApp access has expired on the server',
+};
+async function whatsappReport(done, waiting) {
+  const to = $('#phone').value.replace(/\D/g, '');
+  if (!done.length && !waiting.length) return;
+  const mark = status => { for (const a of done) { state.mail[a.id] = { icon: 'chat', ...status }; updateRow(a); } };
+  if (to.length < 10) return mark({ ok: false, text: 'add your WhatsApp number (with country code) to get reports' });
+  if (state.offline) return mark({ ok: false, text: 'WhatsApp needs our server, which this network cannot reach' });
+  mark({ ok: false, text: 'sending to WhatsApp…' });
+  const r = state.result;
+  let j = {};
+  try {
+    const res = await fetch(API + '/api/whatsapp', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(20000),
+      body: JSON.stringify({
+        to, brand: r.brand, runId: state.runId,
+        health: `${r.ahi.before.value} → ${r.ahi.after.value}`,
+        done: done.map(a => a.feedback || a.title), doneCount: done.length,
+        waiting: waiting.map(a => ({ id: a.id, agent: agentName(a.agent), title: a.recommend || a.title, impact: a.impact })),
+      }),
+    });
+    j = await res.json();
+  } catch { j = { reason: 'WhatsApp service unreachable' }; }
+  const status = j.sent ? { ok: true, text: 'report sent on WhatsApp' } : { ok: false, text: WA_WHY[j.reason] || j.error || j.reason || 'WhatsApp not sent' };
+  mark(status);
+  log(status.ok ? `Action report sent on WhatsApp${j.buttons ? ` with ${j.buttons} approval button${j.buttons === 1 ? '' : 's'}` : ''}` : `WhatsApp: ${status.text}`);
+  if (j.sent && j.buttons && j.store) pollWhatsapp();
+}
+
+// Short one-line WhatsApp message (decisions made on the site); silent if WhatsApp isn't in use
+function whatsappNote(note) {
+  const to = $('#phone').value.replace(/\D/g, '');
+  if (reportVia() !== 'whatsapp' || to.length < 10 || state.offline) return;
+  fetch(API + '/api/whatsapp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, note }) }).catch(() => {});
+}
+
+// Every 4 seconds (for up to 30 minutes), ask the server whether any WhatsApp button was tapped
+function pollWhatsapp() {
+  clearInterval(state.waPoll);
+  const run = state.runId, until = Date.now() + 30 * 60 * 1000;
+  state.waPoll = setInterval(async () => {
+    const open = state.result?.actions.filter(a => a.state === 'waiting') || [];
+    if (run !== state.runId || !open.length || Date.now() > until) return clearInterval(state.waPoll);
+    try {
+      const { decisions = {} } = await (await fetch(`${API}/api/whatsapp?run=${run}`)).json();
+      for (const a of open) {
+        const d = decisions[a.id];
+        if (d === 'approve' || d === 'reject') decide(a.id, d, 'whatsapp');
+        else if (d === 'hold' && !a.held) decide(a.id, 'hold', 'whatsapp');
+      }
+    } catch {}
+  }, 4000);
 }
 
 // ---------------------------------------------------------------------------
@@ -1289,7 +1381,7 @@ const TIPS = {
   watch() {
     return `<h4>Always watching</h4><p>Between full checks the Orchestrator keeps reading the streams in ① and your rules. A full check (Run) re-reads everything, diagnoses, recommends and acts.</p><p style="color:var(--muted)">${nIN(rowsSeen)} rows read since you opened this page.</p>`;
   },
-  email() { return `<h4>${ic('mail')} Try it with your own email address</h4><p><b>Replace this email address with yours</b> to receive the action reports and feel the live demo: press Run, and the agents email you what they did.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">If you get a one-time “Activate” email, click it and run the loop again. If email services are down, the card shows a link that opens the report in your own email app.</p>`; },
+  email() { return `<h4>${ic('chat')} Get the action reports yourself</h4><p><b>WhatsApp (default):</b> type your number with the country code. After each run you get one short summary, and every action that needs you arrives with <b>Approve</b>, <b>Hold</b> and <b>Reject</b> buttons. Tap one and the card here updates within seconds.</p><p><b>Email:</b> switch to Email and type your address to get the same report by email.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">If you get a one-time “Activate” email, click it and run the loop again. If email services are down, the card shows a link that opens the report in your own email app.</p>`; },
   // one line of the agents' feed, in full
   ev(el) {
     const a = agent(el.dataset.agent);
