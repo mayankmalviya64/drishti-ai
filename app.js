@@ -964,7 +964,11 @@ function recCard(a) {
 function actCard(a) {
   const st = a.state || 'pending';
   const who = `<div class="who"><span class="tag" style="--c:var(--${a.agent})">${esc(agentName(a.agent))}</span><span class="lbl">${{ executing: 'agent working', done: 'action taken', waiting: 'needs you', rejected: 'not done', undone: 'rolled back', pending: '' }[st] || ''}</span></div>`;
-  const mail = state.mail[a.id] ? `<span class="mail ${state.mail[a.id].ok ? 'sent' : ''}" title="${esc(state.mail[a.id].text)}">${ic('mail')} ${esc(state.mail[a.id].text)}</span>` : '';
+  // Email status line; when email services are down it becomes a link that opens the report in the visitor's email app
+  const m = state.mail[a.id];
+  const mail = !m ? '' : m.href
+    ? `<a class="mail" href="${esc(m.href)}" title="${esc(m.text)}">${ic('mail')} ${esc(m.text)}</a>`
+    : `<span class="mail ${m.ok ? 'sent' : ''}" title="${esc(m.text)}">${ic('mail')} ${esc(m.text)}</span>`;
   if (st === 'pending') return `<div class="card-a pending">…</div>`;
   if (st === 'executing') return `<div class="card-a executing" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('zap')} ${esc(a.execute || a.title)}</div></div>`;
   if (st === 'waiting') return `<div class="card-a waiting" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('clock')} ${esc(a.title)}</div>
@@ -1108,32 +1112,52 @@ async function emailReport(done, waiting) {
   mark(done, { ok: false, text: `sending report to ${to}…` });
   const r = state.result;
   const sample = state.data.source === 'Sample';
-  const body = {
-    _subject: `Drishti AI · ${done.length} action${done.length === 1 ? '' : 's'} taken for ${r.brand}`,
-    _template: 'table', _captcha: 'false',
-    Brand: r.brand + (sample ? ' (sample brand, fictional data)' : ''),
-    'Health score': `${r.ahi.before.value} → ${r.ahi.after.value} (${r.ahi.after.status})`,
+  const subject = `Drishti AI · ${done.length} action${done.length === 1 ? '' : 's'} taken for ${r.brand}`;
+  // The report as [label, text] pairs; every email route below uses the same list
+  const lines = [
+    ['Brand', r.brand + (sample ? ' (sample brand, fictional data)' : '')],
+    ['Health score', `${r.ahi.before.value} → ${r.ahi.after.value} (${r.ahi.after.status})`],
+  ];
+  done.forEach((a, i) => lines.push([`Action ${i + 1} · ${agentName(a.agent)}`, `DONE: ${a.feedback || a.title}\nWhy: ${a.observed || a.detail}`]));
+  waiting.forEach((a, i) => lines.push([`Waiting for you ${i + 1}`, `${a.recommend || a.title}\nWhy: ${a.observed || a.detail}`]));
+  lines.push(['Time', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST']);
+
+  // Try each route in turn; the first one that works wins
+  const status = await emailViaServer(to, subject, lines) || await emailViaFormSubmit(to, subject, lines) || {
+    // Last resort: a link that opens the visitor's own email app with the report already written
+    ok: false, text: 'email service is down: open the report in your email app',
+    href: `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.map(([k, v]) => `${k}\n${v}`).join('\n\n'))}`,
   };
-  done.forEach((a, i) => {
-    body[`Action ${i + 1} · ${agentName(a.agent)}`] = `DONE: ${a.feedback || a.title}\nWhy: ${a.observed || a.detail}`;
-  });
-  waiting.forEach((a, i) => { body[`Waiting for you ${i + 1}`] = `${a.recommend || a.title}\nWhy: ${a.observed || a.detail}`; });
-  body.Time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST';
+  mark(done, status);
+  log(status.ok ? `Action report emailed to ${to}` : `Email: ${status.text}`);
+}
+
+// Route 1: our own backend (Gmail). Returns a status, or null if it can't send.
+async function emailViaServer(to, subject, lines) {
+  if (state.offline) return null;
+  try {
+    const res = await fetch(API + '/api/email', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, subject, lines }), signal: AbortSignal.timeout(10000) });
+    const j = await res.json();
+    return j.sent ? { ok: true, text: `report emailed to ${to}` } : null;
+  } catch { return null; }
+}
+
+// Route 2: FormSubmit (free, no account). The first email to a new address asks it
+// to click "Activate" once. Returns a status, or null if the service is down.
+async function emailViaFormSubmit(to, subject, lines) {
+  const body = { _subject: subject, _template: 'table', _captcha: 'false' };
+  for (const [k, v] of lines) body[k] = v;
   try {
     const res = await fetch('https://formsubmit.co/ajax/' + encodeURIComponent(to), {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10000),
     });
-    const j = await res.json().catch(() => ({}));
-    const ok = String(j.success) === 'true';
-    const activate = /activat/i.test(j.message || '');
-    const status = ok ? { ok: true, text: `report emailed to ${to}` }
-      : activate ? { ok: false, text: `one-time step: open the "Activate" email sent to ${to}, then reports arrive` }
-      : { ok: false, text: `email not sent (${cut(j.message || 'service busy', 60)})` };
-    mark(done, status);
-    log(status.ok ? `Action report emailed to ${to}` : `Email: ${status.text}`);
-  } catch (e) {
-    mark(done, { ok: false, text: 'email service unreachable' });
-  }
+    const j = await res.json();
+    if (String(j.success) === 'true') return { ok: true, text: `report emailed to ${to}` };
+    if (/activat/i.test(j.message || '')) return { ok: false, text: `one-time step: open the "Activate" email sent to ${to}, then reports arrive` };
+    return null;
+  } catch { return null; }
 }
 
 function log(text) {
@@ -1231,7 +1255,7 @@ const TIPS = {
     return `<h4>${ic('zap')} What the agent does</h4><p>${esc(a.execute || a.title)}</p>
       <div class="k">On a connected account</div><p>${esc(apiCall(a))}${sample ? ' <i>(sample brand: applied to the sample data)</i>' : ''}</p>
       <div class="k">Fed back into ①</div><p class="new">↺ ${esc(a.feedback || a.title)}</p>
-      ${state.mail[a.id] ? `<div class="k">Report</div><p>${esc(state.mail[a.id].text)}</p>` : ''}`;
+      ${state.mail[a.id] ? `<div class="k">Report</div><p>${state.mail[a.id].href ? `<a href="${esc(state.mail[a.id].href)}">${esc(state.mail[a.id].text)}</a>` : esc(state.mail[a.id].text)}</p>` : ''}`;
   },
   ahi() {
     const r = state.result; if (!r) return '';
@@ -1265,7 +1289,7 @@ const TIPS = {
   watch() {
     return `<h4>Always watching</h4><p>Between full checks the Orchestrator keeps reading the streams in ① and your rules. A full check (Run) re-reads everything, diagnoses, recommends and acts.</p><p style="color:var(--muted)">${nIN(rowsSeen)} rows read since you opened this page.</p>`;
   },
-  email() { return `<h4>${ic('mail')} Try it with your own email address</h4><p><b>Replace this email address with yours</b> to receive the action reports and feel the live demo: press Run, and the agents email you what they did.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">Sent via FormSubmit. The first time, your inbox gets a one-time “Activate” email; click it, run the loop again, and reports arrive.</p>`; },
+  email() { return `<h4>${ic('mail')} Try it with your own email address</h4><p><b>Replace this email address with yours</b> to receive the action reports and feel the live demo: press Run, and the agents email you what they did.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">If you get a one-time “Activate” email, click it and run the loop again. If email services are down, the card shows a link that opens the report in your own email app.</p>`; },
   // one line of the agents' feed, in full
   ev(el) {
     const a = agent(el.dataset.agent);
