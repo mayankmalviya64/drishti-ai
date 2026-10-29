@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=Noto+Sans:wght@400;600&family=Noto+Sans+Tamil:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👁</text></svg>">
-<link rel="stylesheet" href="app.css?v=20261028d">
+<link rel="stylesheet" href="app.css?v=20261029a">
 <script>
   // Light mode by default; restore dark mode if the visitor chose it before.
   try { if (localStorage.getItem('drishti-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
@@ -22,7 +22,6 @@
   <a class="logo" href="./"><span class="eye">👁</span> Drishti AI</a>
   <span class="tagline">See every ad leak before it costs you.</span>
   <nav>
-    <a href="pitch.html">Pitch view</a>
     <a href="#details">Results in detail</a>
     <a href="story.html">How it works</a>
     <button class="icon-btn" id="themeBtn" aria-label="Switch to dark mode" title="Switch theme">🌙</button>
@@ -32,7 +31,7 @@
 <!-- ============ One-line pitch ============ -->
 <section class="pitch">
   <h1>Data in → agents think → fix recommended → fix <em>done</em> → new data in.</h1>
-  <p>Press <b>Run the loop</b> and follow it clockwise. Hover anything to see what is flowing through it.</p>
+  <p>Press <b>Run</b> · hover anything to peek.</p>
 </section>
 
 <!-- ============ Controls: what data, which rule, where reports go ============ -->
@@ -235,6 +234,6 @@
 <!-- one floating hover card, filled by app.js -->
 <div class="tip" id="tip" role="tooltip" hidden></div>
 
-<script type="module" src="app.js?v=20261028e"></script>
+<script type="module" src="app.js?v=20261029a"></script>
 </body>
 </html>

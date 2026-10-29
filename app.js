@@ -634,7 +634,7 @@ async function showEvent(e) {
     if (picked && !picked.startsWith(e.engine) && !(e.engine === 'Built-in rules' && $('#modelPick').value === 'rules')) {
       addFeed(`<span class="tag">model</span><span class="txt">Thinking with ${esc(e.engine)}.</span>`, 'thought', 'ORC');
     }
-    addFeed(`<span class="tag">RUN</span><span class="txt">Loop ${state.loop} for <b>${esc(e.brand)}</b>: ${e.period.days} days of data (${e.period.from} → ${e.period.to}), ${esc(e.totals.channels.join(', '))}, ${inr(e.totals.spend)} spend.</span>`, '', 'ORC');
+    addFeed(`<span class="tag">RUN</span><span class="txt">Loop ${state.loop} · <b>${esc(e.brand)}</b> · ${e.period.days} days · ${inr(e.totals.spend)} spend</span>`, '', 'ORC');
     stage(2, '<b>② Agents</b><small>thinking…</small>');
     await wait(400);
   } else if (e.type === 'thought') {
@@ -769,10 +769,10 @@ function actCard(a) {
   const mail = state.mail[a.id] ? `<span class="mail ${state.mail[a.id].ok ? 'sent' : ''}">📧 ${esc(state.mail[a.id].text)}</span>` : '';
   if (st === 'pending') return `<div class="card-a pending">…</div>`;
   if (st === 'executing') return `<div class="card-a executing" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">⚙ ${esc(a.execute || a.title)}</div></div>`;
-  if (st === 'waiting') return `<div class="card-a waiting" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">✋ Ready to: ${esc(a.execute || a.title)}</div>
-    <div class="foot"><span class="badge wait">Big move · your call</span><button class="mini yes" data-act="approve" data-id="${a.id}">Approve</button><button class="mini" data-act="reject" data-id="${a.id}">Reject</button></div></div>`;
+  if (st === 'waiting') return `<div class="card-a waiting" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">✋ ${esc(a.title)}</div>
+    <div class="foot"><span class="badge wait">Your call</span><button class="mini yes" data-act="approve" data-id="${a.id}">Approve</button><button class="mini" data-act="reject" data-id="${a.id}">Reject</button></div></div>`;
   if (st === 'done') return `<div class="card-a done" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">✓ ${esc(a.feedback || a.title)}</div>
-    <div class="foot"><span class="badge auto">${a.tier === 'auto' ? (a.rule ? 'Your rule · done automatically' : 'Small move · done automatically') : 'Approved by you · done'}${a.sentTo ? ' · sent to ' + esc(a.sentTo) : ''}</span>${a.tier === 'auto' ? `<button class="mini" data-act="undo" data-id="${a.id}">Undo</button>` : ''}${mail}</div></div>`;
+    <div class="foot"><span class="badge auto">${a.tier === 'auto' ? (a.rule ? 'Auto · your rule' : 'Auto') : 'Approved'}${a.sentTo ? ' · sent to ' + esc(a.sentTo) : ''}</span>${a.tier === 'auto' ? `<button class="mini" data-act="undo" data-id="${a.id}">Undo</button>` : ''}${mail}</div></div>`;
   return `<div class="card-a ${st}" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${st === 'rejected' ? '✕ Rejected: nothing changed' : '↩ Rolled back: ' + esc(a.title)}</div>
     <div class="foot"><span class="badge off">${st === 'rejected' ? 'You said no' : 'Undone by you'}${a.sentTo ? ' · sent to ' + esc(a.sentTo) : ''}</span>${mail}</div></div>`;
 }
@@ -964,7 +964,7 @@ function renderResults(r) {
     <div><small>True ROAS (Shopify-checked)</small><b class="n">${r.impact.trueRoasNow} → ${r.impact.trueRoasProjected}</b> <span class="up">+${roasUp}%</span></div>
     <div><small>Spend on tired ads</small><b class="n">${r.impact.fatiguedPctNow}% → 0%</b></div>
     <div><small>Spend freed per day</small><b class="n">${inr(r.impact.freedPerDay)}</b></div>
-    <div class="head">${esc(r.briefing.headline)} <a href="#details">See the reasoning ↓</a>${storm}${broken}<small>Projected values assume you approve every move.</small></div>`;
+    <div class="head">${esc(r.briefing.headline)} <a href="#details">See the reasoning ↓</a>${storm}${broken}<small>If every move is approved.</small></div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1018,7 +1018,8 @@ const TIPS = {
   },
   rec(el) {
     const a = state.result?.actions.find(x => x.id === Number(el.dataset.id)); if (!a) return '';
-    return `<h4>${esc(agentName(a.agent))} · evidence</h4><p>${esc(a.detail)}</p>
+    // The card itself shows one short line each; the full observation and advice live here.
+    return `<h4>${esc(agentName(a.agent))} · evidence</h4><p>👀 ${esc(a.observed || '')}</p><p>💡 ${esc(a.recommend || a.title)}</p><p>${esc(a.detail)}</p>
       <div class="k">Why ${a.tier === 'auto' ? 'it acts on its own' : 'it asks you'}</div>
       <p>${a.tier === 'auto' ? (a.rule ? 'This is your standing rule, so it runs without asking.' : 'Small move (under ₹5,000/day or a budget shift under 10%), so it runs and can be undone.') : 'Big move, or the data/market needs a human eye, so it waits for Approve.'}</p>`;
   },
@@ -1119,8 +1120,9 @@ function renderDetails(r) {
   $('#details').hidden = false;
 
   $('#briefCard').innerHTML = `<h3>Briefing for the marketing manager</h3>
-    <p><b>${esc(r.briefing.headline)}</b></p><p>${esc(r.briefing.briefing)}</p>
+    <p><b>${esc(r.briefing.headline)}</b></p>
     <p style="color:var(--muted)">For the owner: ${esc(r.briefing.owner_note)}</p>
+    <details><summary class="hint">Full briefing</summary><p>${esc(r.briefing.briefing)}</p></details>
     <p class="hint">Reasoning engine: ${esc(r.engine)} · Data ${esc(r.period.from)} → ${esc(r.period.to)}</p>`;
 
   // Claimed vs true ROAS per channel (the measurement trap)
@@ -1136,7 +1138,7 @@ function renderDetails(r) {
   const s = r.shock || { checks: [], headlines: [] };
   $('#shockCard').innerHTML = `<h3>Is it us or the world? ${s.external ? '<span class="pill s-amber">Market shock</span>' : '<span class="pill s-green">Inside the account</span>'}</h3>
     <ul class="checks">${s.checks.map(c => `<li><b>${esc(c.name)}</b>${esc(c.result)}</li>`).join('')}</ul>
-    ${s.headlines?.length ? `<div class="section-label">Live headlines read this run</div><ul class="news">${s.headlines.slice(0, 5).map(h => `<li><a href="${esc(h.link)}" target="_blank" rel="noopener">${esc(h.title)}</a></li>`).join('')}</ul>` : ''}`;
+    ${s.headlines?.length ? `<div class="section-label">Live headlines read this run</div><ul class="news">${s.headlines.slice(0, 3).map(h => `<li><a href="${esc(h.link)}" target="_blank" rel="noopener">${esc(h.title)}</a></li>`).join('')}</ul>` : ''}`;
 
   // Creative variants
   $('#creativeCard').innerHTML = `<h3>New ads drafted by Creative Studio</h3>
