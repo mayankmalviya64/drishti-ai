@@ -27,25 +27,85 @@ function inr(n) {
   return '₹' + n.toLocaleString('en-IN');
 }
 
-// The six agents shown in quadrant ② (matches the deck), with what each one does,
-// for the hover card.
+// ---------------------------------------------------------------------------
+// ICONS: small line icons drawn as inline SVG (24 × 24, stroke only), so every
+// logo on the page has the same thin, minimal style. ic('eye') returns the SVG text.
+// Any element with data-icon="name" in the HTML gets its icon filled in on load.
+// ---------------------------------------------------------------------------
+const ICON_PATHS = {
+  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  phoenix: '<path d="M12 21c-1.5-2-2-4-1.2-6.2C8.6 14 5.5 11.8 3 7.5c3 .8 5.4 1.9 7.2 3.3C9.6 8.2 10 5.5 12 3c2 2.5 2.4 5.2 1.8 7.8 1.8-1.4 4.2-2.5 7.2-3.3-2.5 4.3-5.6 6.5-7.8 7.3.8 2.2.3 4.2-1.2 6.2Z"/>',
+  play: '<path d="M7 4.5v15l12-7.5-12-7.5Z"/>',
+  info: '<circle cx="12" cy="12" r="9.5"/><path d="M12 16v-4.5M12 8h.01"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  loop: '<path d="M3 12a9 9 0 0 1 15.7-6L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.7 6L3 16"/><path d="M8 16H3v5"/>',
+  gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  layers: '<path d="m12 2 10 5-10 5L2 7l10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  db: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>',
+  sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  present: '<path d="M2 3h20M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3M7 21l5-5 5 5"/>',
+  book: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+  mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-10 5L2 7"/>',
+  home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  clock: '<circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/>',
+  zap: '<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>',
+  undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>',
+  alert: '<path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/>',
+  wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z"/>',
+  storm: '<path d="M6 16.3A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2 8.7"/><path d="m13 12-3 5h4l-3 5"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  // the six agents
+  compass: '<circle cx="12" cy="12" r="9.5"/><path d="m16.2 7.8-2.1 6.3-6.3 2.1 2.1-6.3 6.3-2.1Z"/>',
+  signal: '<path d="M4.9 19.1a10 10 0 0 1 0-14.2M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M19.1 4.9a10 10 0 0 1 0 14.2"/><circle cx="12" cy="12" r="2"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>',
+  target: '<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.5"/>',
+  scale: '<path d="m16 16 3-8 3 8a4.5 4.5 0 0 1-6 0Z"/><path d="m2 16 3-8 3 8a4.5 4.5 0 0 1-6 0Z"/><path d="M7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
+  // data sources
+  facebook: '<path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>',
+  instagram: '<rect width="20" height="20" x="2" y="2" rx="5.5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/>',
+  google: '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 12h-8.5"/>',
+  infinity: '<path d="M12 12c-2-2.7-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.3 6-4Zm0 0c2 2.7 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.3-6 4Z"/>',
+  tv: '<rect width="20" height="14" x="2" y="7" rx="2"/><path d="m17 2-5 5-5-5"/>',
+  bag: '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/>',
+  search: '<circle cx="11" cy="11" r="7.5"/><path d="m21 21-4.3-4.3"/>',
+  news: '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8z"/>',
+  calendar: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  chart: '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
+};
+const ic = name => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name] || ICON_PATHS.chart}</svg>`;
+// fill every <span data-icon="…"> already in the page (or inside a freshly drawn part)
+function fillIcons(root = document) {
+  root.querySelectorAll('[data-icon]').forEach(el => { if (!el.firstChild) el.innerHTML = ic(el.dataset.icon); });
+}
+fillIcons();
+
+// The six agents shown in box ② (matches the deck), with what each one does,
+// for the detail panel.
 const AGENTS = [
-  { id: 'ORC', icon: '🧭', name: 'Orchestrator', role: 'Shock filter',
+  { id: 'ORC', icon: 'compass', name: 'Orchestrator', role: 'Shock filter',
     job: 'Decides which agent to call next. Before anyone acts, it checks whether a drop is the market (news, CPM spikes, festivals) rather than our ads.',
     reads: 'Live news, auction prices, sale calendar' },
-  { id: 'P1', icon: '📡', name: 'Signal', role: 'Data trust',
+  { id: 'P1', icon: 'signal', name: 'Signal', role: 'Data trust',
     job: 'Joins what ad platforms claim with real Shopify orders to get TRUE ROAS, and spots broken tracking. If trust drops below 60, nothing runs on its own.',
     reads: 'Ad rows + Shopify orders' },
-  { id: 'P2', icon: '🔥', name: 'Fatigue', role: 'Sentinel',
+  { id: 'P2', icon: 'flame', name: 'Fatigue', role: 'Sentinel',
     job: 'Scores every ad 0–100 against its own first days (CTR, how often people saw it, CPM) and pauses ads that have worn out.',
     reads: 'Daily CTR, frequency, CPM per ad' },
-  { id: 'P3', icon: '🎨', name: 'Creative', role: 'Studio',
+  { id: 'P3', icon: 'sparkles', name: 'Creative', role: 'Studio',
     job: 'Writes replacement ads in English and regional languages, checks them against ASCI rules, and moves videos to the channel they suit (phone feed → TV).',
     reads: 'Tired ads, regions, video results per channel' },
-  { id: 'P4', icon: '🎯', name: 'Cohort', role: 'Optimizer',
+  { id: 'P4', icon: 'target', name: 'Cohort', role: 'Optimizer',
     job: 'Finds city and audience pockets that lose money, and compares our ads with competitors’ ads. Trims, narrows or shifts spend.',
     reads: 'Spend × region, competitor ads' },
-  { id: 'P5', icon: '⚖️', name: 'Budget', role: 'Allocator',
+  { id: 'P5', icon: 'scale', name: 'Budget', role: 'Allocator',
     job: 'Moves tomorrow’s rupee to the channel with the best next-rupee return, paces for festivals, and enforces your “flat revenue → hold” rule.',
     reads: 'True revenue curves, your rule, calendar' },
 ];
@@ -81,29 +141,119 @@ const wait = ms => sleep(FAST ? 0 : ms);
 // ---------------------------------------------------------------------------
 // Theme toggle (light by default)
 // ---------------------------------------------------------------------------
+// (there are two theme buttons: one on the landing page, one in the sidebar)
 function syncThemeBtn() {
   const dark = document.documentElement.dataset.theme === 'dark';
-  $('#themeBtn').textContent = dark ? '☀️' : '🌙';
-  $('#themeBtn').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  $$('.theme-btn').forEach(b => {
+    b.innerHTML = ic(dark ? 'sun' : 'moon');
+    b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  });
 }
-$('#themeBtn').onclick = () => {
+$$('.theme-btn').forEach(b => b.onclick = () => {
   const dark = document.documentElement.dataset.theme !== 'dark';
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   store.set('drishti-theme', dark ? 'dark' : 'light');
   syncThemeBtn();
-};
+});
 syncThemeBtn();
+
+// ---------------------------------------------------------------------------
+// SCREENS: the landing page and the agent screen live in the same file.
+// <html class="in-app"> shows the agent screen; the link gets #agent so the
+// browser's Back button returns to the landing page.
+// ---------------------------------------------------------------------------
+function showApp(push = true) {
+  document.documentElement.classList.add('in-app');
+  if (push && location.hash !== '#agent') history.pushState(null, '', '#agent');
+  closeSheets();
+  scrollTo(0, 0);
+  requestAnimationFrame(fitLoop);
+}
+function showLanding(push = true) {
+  document.documentElement.classList.remove('in-app');
+  if (push) history.pushState(null, '', location.pathname + location.search);
+  closeSheets();
+  scrollTo(0, 0);
+}
+$('#startBtn').onclick = () => showApp();
+$('#homeBtn').onclick = () => showLanding();
+$('#homeLink').onclick = e => { e.preventDefault(); showLanding(); };
+// Back / Forward: #agent → agent screen, no hash → landing. Other hashes are in-page jumps.
+addEventListener('popstate', () => {
+  if (location.hash === '#agent') showApp(false);
+  else if (!location.hash) showLanding(false);
+});
+
+// In-page links (#loop, #results, #details…) scroll smoothly instead of changing the URL,
+// so the landing / agent switch above is never confused by them.
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[href^="#"]');
+  if (!a || a.getAttribute('href').length < 2) return;
+  const target = document.querySelector(a.getAttribute('href'));
+  if (!target) return;
+  e.preventDefault();
+  closeSheets();
+  // Results and Reasoning only exist after a run: until then, point at the Run button instead
+  if (target.closest('[hidden]')) {
+    scrollTo({ top: 0, behavior: 'smooth' });
+    $('#runBtn').classList.remove('idle'); void $('#runBtn').offsetWidth; $('#runBtn').classList.add('idle');
+    return;
+  }
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+// ---------------------------------------------------------------------------
+// SLIDING PANELS: rules, your data, about, agents and the detail panel all slide
+// in from the right. Only one is open at a time; the dark scrim behind closes it.
+// On phones the sidebar slides in from the left the same way.
+// ---------------------------------------------------------------------------
+const SHEETS = ['#rulesPanel', '#ownData', '#aboutPanel', '#agentsPanel', '#drawer'];
+function openSheet(sel) {
+  closeSheets(sel);
+  const el = $(sel);
+  el.hidden = false;
+  $('#scrim').hidden = false;
+  void el.offsetWidth;                 // let the browser draw it off-screen first, so it slides in
+  el.classList.add('open');
+  $('#scrim').classList.add('open');
+  $('#ownBtn').setAttribute('aria-expanded', String(sel === '#ownData'));
+  $('#rulesBtn').setAttribute('aria-expanded', String(sel === '#rulesPanel'));
+}
+function closeSheets(except) {
+  for (const sel of SHEETS) {
+    const el = $(sel);
+    if (sel === except || !el.classList.contains('open')) continue;
+    el.classList.remove('open');
+    setTimeout(() => { if (!el.classList.contains('open')) el.hidden = true; }, 320);
+  }
+  $('#side').classList.remove('open');
+  $$('.row.hl').forEach(x => x.classList.remove('hl'));
+  if (!except) {
+    $('#scrim').classList.remove('open');
+    setTimeout(() => { if (!$('#scrim').classList.contains('open')) $('#scrim').hidden = true; }, 260);
+  }
+  $('#ownBtn').setAttribute('aria-expanded', 'false');
+  $('#rulesBtn').setAttribute('aria-expanded', 'false');
+}
+const isOpen = sel => $(sel).classList.contains('open');
+$('#scrim').onclick = () => closeSheets();
+$$('[data-close]').forEach(b => b.onclick = () => closeSheets());
+addEventListener('keydown', e => { if (e.key === 'Escape') closeSheets(); });
+
+// Phones: the menu button slides the sidebar in; picking anything closes it again.
+$('#menuBtn').onclick = () => {
+  $('#side').classList.add('open');
+  $('#scrim').hidden = false; void $('#scrim').offsetWidth; $('#scrim').classList.add('open');
+};
+
+// "About" and "Meet the agents" buttons (on the landing page and in the sidebar)
+$$('[data-open]').forEach(b => b.onclick = () => openSheet(b.dataset.open === 'about' ? '#aboutPanel' : '#agentsPanel'));
 
 // ---------------------------------------------------------------------------
 // CONTROLS + loading data
 // ---------------------------------------------------------------------------
-// "Use your own data" opens the drawer with CSV / Sheet / Meta / Settings
-$('#ownBtn').onclick = () => {
-  const open = $('#ownData').hidden;
-  $('#ownData').hidden = !open;
-  $('#ownBtn').setAttribute('aria-expanded', String(open));
-  fitLoop();
-};
+// "Connect data" opens the panel with CSV / Sheet / Meta / Settings
+$('#ownBtn').onclick = () => (isOpen('#ownData') ? closeSheets() : openSheet('#ownData'));
 $$('.tab').forEach(t => t.onclick = () => {
   $$('.tab').forEach(x => x.classList.toggle('active', x === t));
   $$('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + t.dataset.tab));
@@ -384,16 +534,9 @@ function renderRules() {
   renderRuleSum();
 }
 
-// The short version in the controls row: the first rule, editable, plus "+N more"
+// The short version in the sidebar: how many rules are on (the full, editable list is in the panel)
 function renderRuleSum() {
-  const r = state.rules[0];
-  $('#ruleSum').innerHTML = r ? `${ruleInputs(r, 0)}${state.rules.length > 1 ? ` <b class="more">+${state.rules.length - 1} more</b>` : ''}` : '<i>No rules set</i>';
-  $$('#ruleSum input').forEach(inp => inp.onchange = () => {
-    const rule = state.rules[0];
-    rule[inp.dataset.k] = Number(inp.value);
-    Object.assign(rule, cleanRule(rule));
-    saveRules(); renderRules();
-  });
+  $('#ruleSum').textContent = state.rules.length ? String(state.rules.length) : '';
 }
 
 $('#ruleType').innerHTML = Object.entries(RULE_TYPES).map(([k, t]) => `<option value="${k}">${esc(t.text.replace('{a}', '…').replace('{b}', '…'))}</option>`).join('');
@@ -404,12 +547,7 @@ $('#addRule').onclick = () => {
   $('#ruleList li:last-child input')?.focus();
 };
 $('#resetRules').onclick = () => { state.rules = DEFAULT_RULES.map(r => ({ ...r })); saveRules(); renderRules(); };
-$('#rulesBtn').onclick = () => {
-  const open = $('#rulesPanel').hidden;
-  $('#rulesPanel').hidden = !open;
-  $('#rulesBtn').setAttribute('aria-expanded', String(open));
-  fitLoop();
-};
+$('#rulesBtn').onclick = () => (isOpen('#rulesPanel') ? closeSheets() : openSheet('#rulesPanel'));
 loadRules();
 renderRules();
 
@@ -434,14 +572,15 @@ function renderModelPick() {
 $('#modelPick').onchange = () => {
   store.set('drishti-model', $('#modelPick').value);
   const label = $('#modelPick').selectedOptions[0]?.textContent;
-  watchLine(`🔁 Model swapped to <b>${esc(label)}</b>. The next run thinks with it.`);
+  watchLine(`Model swapped to <b>${esc(label)}</b>. The next run thinks with it.`);
   log(`Model swapped to ${label}`);
 };
 
 // ---------------------------------------------------------------------------
 // ① DATA COMING IN: one tile per source, hover to peek at the rows
 // ---------------------------------------------------------------------------
-const ICONS = { Facebook: '📘', Instagram: '📸', Meta: '♾️', Google: '🔎', JioHotstar: '📺' };
+// icon name per ad channel (any other channel, e.g. Amazon or Blinkit, gets the chart icon)
+const ICONS = { Facebook: 'facebook', Instagram: 'instagram', Meta: 'infinity', Google: 'google', JioHotstar: 'tv' };
 
 // The list of sources for the loaded data. Each has a name (used to route
 // "fed back" updates to the right tile), an icon and a one-line summary.
@@ -452,15 +591,15 @@ function sourceList() {
   const list = channels.map(ch => {
     const today = d.clean.filter(r => r.channel === ch && r.date === last);
     const ads = new Set(d.clean.filter(r => r.channel === ch).map(r => r.ad));
-    return { key: ch, icon: ICONS[ch] || '📊', name: ch === 'JioHotstar' ? 'JioHotstar · TV' : ch + ' Ads',
+    return { key: ch, icon: ICONS[ch] || 'chart', name: ch === 'JioHotstar' ? 'JioHotstar · TV' : ch + ' Ads',
       sub: `${ads.size} ad${ads.size > 1 ? 's' : ''} · ${inr(today.reduce((s, r) => s + r.spend, 0))}/day`, on: true };
   });
-  list.push({ key: 'Shopify', icon: '🛍️', name: `${d.ordersFrom || 'Shopify'} orders`, on: d.cleanOrders.length > 0,
+  list.push({ key: 'Shopify', icon: 'bag', name: `${d.ordersFrom || 'Shopify'} orders`, on: d.cleanOrders.length > 0,
     sub: d.cleanOrders.length ? `${Math.round(d.cleanOrders.filter(o => o.date === last).reduce((s, o) => s + o.orders, 0)).toLocaleString('en-IN')} orders yesterday` : 'not connected · ROAS estimated' });
-  list.push({ key: 'Competitors', icon: '🕵️', name: 'Competitor ads', on: d.cleanComp.length > 0,
+  list.push({ key: 'Competitors', icon: 'search', name: 'Competitor ads', on: d.cleanComp.length > 0,
     sub: d.cleanComp.length ? `${new Set(d.cleanComp.map(c => c.competitor)).size} rivals · Ad Library` : 'not connected' });
-  list.push({ key: 'News', icon: '📰', name: 'Live news', on: true, sub: 'Google News · read each run' });
-  list.push({ key: 'Calendar', icon: '📅', name: 'India sale calendar', on: true, sub: nextEvent() });
+  list.push({ key: 'News', icon: 'news', name: 'Live news', on: true, sub: 'Google News · read each run' });
+  list.push({ key: 'Calendar', icon: 'calendar', name: 'Sale calendar', on: true, sub: nextEvent() });
   return list;
 }
 
@@ -472,12 +611,13 @@ function nextEvent() {
 
 function renderSources() {
   const list = sourceList();
-  $('#srcCount').textContent = `${list.filter(s => s.on).length} sources · hover to peek`;
+  $('#srcCount').textContent = `${list.filter(s => s.on).length} live sources`;
   $('#sources').innerHTML = list.map(s => {
     const upd = (state.updates[s.key] || [])[0];
+    // the small summary sits after the live line so CSS can show it only when there is no live line
     return `<div class="src ${s.on ? '' : 'off'}" id="src-${s.key.replace(/\W/g, '')}" data-tip="src" data-key="${esc(s.key)}" tabindex="0">
-      <span class="ic">${s.icon}</span><b>${esc(s.name)}</b><small>${esc(s.sub)}</small>
-      <span class="live" data-live="${esc(s.key)}"></span>
+      <span class="ic">${ic(s.icon)}</span><b>${esc(s.name)}</b>
+      <span class="live" data-live="${esc(s.key)}"></span><small>${esc(s.sub)}</small>
       ${upd ? `<span class="upd">↺ ${esc(upd)}</span>` : ''}<span class="stream"></span></div>`;
   }).join('');
   tick();
@@ -538,8 +678,8 @@ function liveText(key) {
   const t = dayTotals(key); if (!t) return '';
   const v = grow(key, t);
   if (key === 'Shopify') return `<i></i><b>${nIN(v.orders)}</b> orders · <b>₹${nIN(v.revenue)}</b> today`;
-  // 👁 views · 👆 clicks · ₹ spent, all "today so far"
-  return `<i></i><span title="views today">👁 <b>${nIN(v.views)}</b></span> · <span title="clicks today">👆 <b>${nIN(v.clicks)}</b></span> · <span title="spent today"><b>₹${nIN(v.spend)}</b></span>`;
+  // views · clicks · ₹ spent, all "today so far"
+  return `<i></i><span title="views today"><b>${nIN(v.views)}</b> views</span> · <span title="clicks today"><b>${nIN(v.clicks)}</b> clicks</span> · <span title="spent today"><b>₹${nIN(v.spend)}</b></span>`;
 }
 
 function tick() {
@@ -588,14 +728,62 @@ addEventListener('scroll', () => {
 function setFlowing(on) { $$('.src:not(.off)').forEach(el => el.classList.toggle('flowing', on)); }
 
 // ---------------------------------------------------------------------------
-// The loop's stage: highlights the active quadrant and animates the arrows
+// The loop's stage: lights the boxes up one after another.
+//   step n is "active" (glowing), steps before it are "done" (stay lit),
+//   steps after it are "dim" (not reached yet).
+//   n = 0 means idle: before any run only box ① is lit (the data is ready);
+//   after a run every box stays lit as done.
+// The progress bar and the 4-step strip above the boxes follow the same steps.
 // ---------------------------------------------------------------------------
+// each step's box (③ and ④ are drawn as a "shell" behind a header, so both get the class)
+const BOXES = [['#q1'], ['#q2'], ['#q3', '.s-right'], ['#q4', '.s-left']];
+const STEP_BUSY = ['reading data…', 'thinking…', 'recommending…', 'acting…'];
+
 function stage(n, label) {
-  ['#q1', '#q2', '#q3', '#q4'].forEach((s, i) => $(s).closest('.q, .lower').classList.toggle('active', i + 1 === n || (n >= 3 && i >= 2)));
+  const finished = n === 0 && state.result;
+  BOXES.forEach((sels, i) => {
+    const step = i + 1;
+    let cls;
+    if (finished) cls = 'done';                              // after a run: everything lit
+    else if (n === 0) cls = step === 1 ? 'done' : 'dim';     // before a run: only the data is ready
+    else cls = step < n ? 'done' : step === n ? 'active' : 'dim';
+    for (const s of sels) {
+      $(s).classList.remove('active', 'done', 'dim');
+      $(s).classList.add(cls);
+    }
+    const li = $(`.steps li[data-step="${step}"]`);
+    li.classList.remove('active', 'done');
+    if (cls !== 'dim') li.classList.add(cls);
+    li.querySelector('small').textContent = stepNote(step, cls, finished);
+  });
+  // progress bar: a quarter per step; inside step ④, playActions() moves it along per action
+  setProgress(finished ? 100 : n === 0 ? 0 : (n - 1) * 25 + 10);
+  $('#pbar').classList.toggle('running', state.running);
   $('#flow12').classList.toggle('on', n === 1 || n === 2);
   $('#flow23').classList.toggle('on', n === 3);
   $('#hub').classList.toggle('running', state.running);
   if (label) $('#hubIn').innerHTML = label;
+}
+
+// the small status line under each step name, e.g. "thinking…" or "5 found"
+function stepNote(step, cls, finished) {
+  if (cls === 'active') return STEP_BUSY[step - 1];
+  if (cls === 'dim') return 'waiting';
+  const r = state.result;
+  if (step === 1) return `${sourceList().filter(s => s.on).length} sources`;
+  if (step === 2) return `${$$('.agent-node.done, .agent-node.alert').length || AGENTS.length} agents done`;
+  if (step === 3) return r ? `${r.actions.length} found` : 'done';
+  if (step === 4 && r) {
+    const done = r.actions.filter(a => a.state === 'done').length, ask = r.actions.filter(a => a.state === 'waiting').length;
+    return `${done} done${ask ? ` · ${ask} need you` : ''}`;
+  }
+  return 'done';
+}
+
+function setProgress(pct) {
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  $('#pbarFill').style.width = pct + '%';
+  $('#pbar').setAttribute('aria-valuenow', String(pct));
 }
 
 // ---------------------------------------------------------------------------
@@ -603,7 +791,8 @@ function stage(n, label) {
 // ---------------------------------------------------------------------------
 function renderStrip() {
   $('#agentStrip').innerHTML = AGENTS.map(a =>
-    `<div class="agent-node" id="node-${a.id}" style="--c:var(--${a.id})" data-tip="agent" data-id="${a.id}" tabindex="0"><div class="dot">${a.icon}</div><b>${a.name}</b>${a.role}</div>`).join('');
+    `<div class="agent-node" id="node-${a.id}" style="--c:var(--${a.id})" data-tip="agent" data-id="${a.id}" tabindex="0"><div class="dot">${ic(a.icon)}</div><b>${a.name}</b><span class="role">${a.role}</span></div>`).join('');
+  $('#agentBar').style.width = '0';
 }
 renderStrip();
 
@@ -611,6 +800,9 @@ function setNode(id, status) {
   const n = $('#node-' + id); if (!n) return;
   n.classList.remove('working', 'done', 'alert');
   n.classList.add(status);
+  // the thin bar under the agents fills up as each one finishes
+  const finished = $$('.agent-node.done, .agent-node.alert').length;
+  $('#agentBar').style.width = (finished / AGENTS.length) * 100 + '%';
 }
 
 function addFeed(html, cls, agentId) {
@@ -619,6 +811,11 @@ function addFeed(html, cls, agentId) {
   div.className = 'ev ' + (cls || '');
   div.style.setProperty('--c', `var(--${agentId || 'ORC'})`);
   div.innerHTML = html;
+  // the line is cut to one line on screen; clicking it opens the full text in the detail panel
+  div.dataset.tip = 'ev';
+  div.dataset.agent = agentId || 'ORC';
+  div.dataset.full = div.querySelector('.txt')?.textContent || '';
+  div.tabIndex = 0;
   feed.appendChild(div);
   feed.scrollTop = feed.scrollHeight;
   return div;
@@ -635,7 +832,7 @@ async function showEvent(e) {
       addFeed(`<span class="tag">model</span><span class="txt">Thinking with ${esc(e.engine)}.</span>`, 'thought', 'ORC');
     }
     addFeed(`<span class="tag">RUN</span><span class="txt">Loop ${state.loop} · <b>${esc(e.brand)}</b> · ${e.period.days} days · ${inr(e.totals.spend)} spend</span>`, '', 'ORC');
-    stage(2, '<b>② Agents</b><small>thinking…</small>');
+    stage(2, '<b>Step 2</b><small>thinking…</small>');
     await wait(400);
   } else if (e.type === 'thought') {
     addFeed(`<span class="tag">thinks</span><span class="txt">${esc(e.text)}</span>`, 'thought');
@@ -666,11 +863,12 @@ async function showEvent(e) {
 
 async function run() {
   if (state.running) return;
-  if (!state.data?.rows?.length) { $('#ownData').hidden = false; return setStatus('Load some data first.', 'err'); }
+  if (!state.data?.rows?.length) { openSheet('#ownData'); return setStatus('Load some data first.', 'err'); }
   state.running = true; state.loop++;
   state.agentLog = {}; state.mail = {};
   const btn = $('#runBtn');
-  btn.disabled = true; btn.classList.remove('idle'); btn.textContent = 'Loop running…';
+  btn.disabled = true; btn.classList.remove('idle'); btn.innerHTML = 'Agent running…';
+  state.result = null;   // so the boxes start from step ① again
   $('#feed').innerHTML = '';
   renderStrip();
   $('#rows').innerHTML = '';
@@ -678,7 +876,7 @@ async function run() {
 
   watchLine(`<b>Full check running</b> · loop ${state.loop} · ${esc($('#modelPick').selectedOptions[0]?.textContent || '')}`);
   // ① Data comes in first
-  stage(1, '<b>① Data</b><small>reading…</small>');
+  stage(1, '<b>Step 1</b><small>reading data…</small>');
   setFlowing(true);
   await wait(900);
 
@@ -721,7 +919,7 @@ async function run() {
   await reader;
   setFlowing(false);
   state.running = false;
-  btn.disabled = false; btn.textContent = '↻ Run the loop again';
+  btn.disabled = false; btn.innerHTML = `${ic('loop')}Run again`;
   hubIdle();
   watchLine('<b>Back to watching</b> · the next full check re-reads everything the agents just changed');
 }
@@ -757,7 +955,7 @@ function money(a) {
 
 function recCard(a) {
   return `<div class="card-r" style="--c:var(--${a.agent})" data-tip="rec" data-id="${a.id}" tabindex="0">
-    <div class="who"><span class="tag">${esc(agentName(a.agent))}</span><span class="lbl">${a.rule ? 'your rule fired' : 'observed'}</span><span class="money" style="margin-left:auto">${money(a)}</span></div>
+    <div class="who"><span class="tag">${esc(agentName(a.agent))}</span><span class="lbl">${a.rule ? 'your rule' : ''}</span><span class="money" style="margin-left:auto">${money(a)}</span></div>
     <p class="obs">${esc(a.observed || a.detail)}</p>
     <p class="rec">${esc(a.recommend || a.title)}</p></div>`;
 }
@@ -766,12 +964,12 @@ function recCard(a) {
 function actCard(a) {
   const st = a.state || 'pending';
   const who = `<div class="who"><span class="tag" style="--c:var(--${a.agent})">${esc(agentName(a.agent))}</span><span class="lbl">${{ executing: 'agent working', done: 'action taken', waiting: 'needs you', rejected: 'not done', undone: 'rolled back', pending: '' }[st] || ''}</span></div>`;
-  const mail = state.mail[a.id] ? `<span class="mail ${state.mail[a.id].ok ? 'sent' : ''}">📧 ${esc(state.mail[a.id].text)}</span>` : '';
+  const mail = state.mail[a.id] ? `<span class="mail ${state.mail[a.id].ok ? 'sent' : ''}" title="${esc(state.mail[a.id].text)}">${ic('mail')} ${esc(state.mail[a.id].text)}</span>` : '';
   if (st === 'pending') return `<div class="card-a pending">…</div>`;
-  if (st === 'executing') return `<div class="card-a executing" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">⚙ ${esc(a.execute || a.title)}</div></div>`;
-  if (st === 'waiting') return `<div class="card-a waiting" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">✋ ${esc(a.title)}</div>
+  if (st === 'executing') return `<div class="card-a executing" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('zap')} ${esc(a.execute || a.title)}</div></div>`;
+  if (st === 'waiting') return `<div class="card-a waiting" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('clock')} ${esc(a.title)}</div>
     <div class="foot"><span class="badge wait">Your call</span><button class="mini yes" data-act="approve" data-id="${a.id}">Approve</button><button class="mini" data-act="reject" data-id="${a.id}">Reject</button></div></div>`;
-  if (st === 'done') return `<div class="card-a done" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">✓ ${esc(a.feedback || a.title)}</div>
+  if (st === 'done') return `<div class="card-a done" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('check')} ${esc(a.feedback || a.title)}</div>
     <div class="foot"><span class="badge auto">${a.tier === 'auto' ? (a.rule ? 'Auto · your rule' : 'Auto') : 'Approved'}${a.sentTo ? ' · sent to ' + esc(a.sentTo) : ''}</span>${a.tier === 'auto' ? `<button class="mini" data-act="undo" data-id="${a.id}">Undo</button>` : ''}${mail}</div></div>`;
   return `<div class="card-a ${st}" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${st === 'rejected' ? '✕ Rejected: nothing changed' : '↩ Rolled back: ' + esc(a.title)}</div>
     <div class="foot"><span class="badge off">${st === 'rejected' ? 'You said no' : 'Undone by you'}${a.sentTo ? ' · sent to ' + esc(a.sentTo) : ''}</span>${mail}</div></div>`;
@@ -806,6 +1004,7 @@ function countActions() {
   const acts = state.result?.actions || [];
   const done = acts.filter(a => a.state === 'done').length, ask = acts.filter(a => a.state === 'waiting').length;
   $('#actCount').textContent = `${done} done · ${ask} waiting for you`;
+  if (!state.running && state.result) $('.steps li[data-step="4"] small').textContent = stepNote(4, 'done', true);
 }
 
 // The choreography: recommendation appears → thread draws → agent acts → data flows back
@@ -813,7 +1012,7 @@ async function playActions(r) {
   $('#statusPill').textContent = r.ahi.after.status;
   $('#statusPill').className = 'pill ' + statusClass(r.ahi.after.status);
   $('#rows').innerHTML = r.actions.length ? '' : '<div class="row empty-row"><div class="empty">Nothing to do.</div><div></div><div class="empty">No leaks found in this data.</div></div>';
-  stage(3, '<b>③ Findings</b><small>recommending…</small>');
+  stage(3, '<b>Step 3</b><small>recommending…</small>');
   for (const a of r.actions) log(`${agentName(a.agent)} observed: ${a.observed || a.detail}`);
 
   for (const a of r.actions) {
@@ -822,7 +1021,9 @@ async function playActions(r) {
     const row = $('#row-' + a.id);
     row.scrollIntoView({ block: 'nearest', behavior: FAST ? 'auto' : 'smooth' });
     await wait(650);
-    stage(4, '<b>④ Action</b><small>agents acting…</small>');
+    if (r.actions.indexOf(a) === 0) stage(4, '<b>Step 4</b><small>acting…</small>');
+    // inside step ④ the progress bar moves on with every action
+    setProgress(75 + (25 * r.actions.indexOf(a)) / r.actions.length);
     a.state = a.tier === 'auto' ? 'executing' : 'waiting';
     updateRow(a, true);
     if (a.tier === 'auto') {
@@ -956,15 +1157,15 @@ function gauge(value, status) {
 function renderResults(r) {
   const after = r.ahi.after, before = r.ahi.before;
   const roasUp = Math.round(((r.impact.trueRoasProjected - r.impact.trueRoasNow) / (r.impact.trueRoasNow || 1)) * 100);
-  const storm = r.shock?.external ? `<div class="storm">🌩 <b>Storm Mode:</b> CPMs spiked on every channel at once. This is the market, not the agents: caps tightened, every budget move needs you.</div>` : '';
-  const broken = r.signal.trackingBreaks.length ? `<div class="storm">🔧 <b>Tracking alert:</b> ${esc(r.signal.trackingBreaks.map(b => b.channel).join(', '))} under-reported sales yesterday. Its budget moves are frozen until fixed.</div>` : '';
+  const storm = r.shock?.external ? `<div class="storm">${ic('storm')}<span><b>Storm Mode:</b> the whole market moved, so every budget move needs you.</span></div>` : '';
+  const broken = r.signal.trackingBreaks.length ? `<div class="storm">${ic('wrench')}<span><b>Tracking alert:</b> ${esc(r.signal.trackingBreaks.map(b => b.channel).join(', '))} under-reported sales; its budget is frozen.</span></div>` : '';
   $('#results').hidden = false;
   $('#results').innerHTML = `
     <div data-tip="ahi"><div class="gauge">${gauge(after.value, after.status)}<div class="val">${after.value}</div><div class="glbl">Agent Health Index · was ${before.value}</div></div></div>
-    <div><small>True ROAS (Shopify-checked)</small><b class="n">${r.impact.trueRoasNow} → ${r.impact.trueRoasProjected}</b> <span class="up">+${roasUp}%</span></div>
-    <div><small>Spend on tired ads</small><b class="n">${r.impact.fatiguedPctNow}% → 0%</b></div>
-    <div><small>Spend freed per day</small><b class="n">${inr(r.impact.freedPerDay)}</b></div>
-    <div class="head">${esc(r.briefing.headline)} <a href="#details">See the reasoning ↓</a>${storm}${broken}<small>If every move is approved.</small></div>`;
+    <div data-tip="roas"><small>True ROAS</small><b class="n">${r.impact.trueRoasNow} → ${r.impact.trueRoasProjected}</b> <span class="up">+${roasUp}%</span></div>
+    <div data-tip="tired"><small>Spend on tired ads</small><b class="n">${r.impact.fatiguedPctNow}% → 0%</b></div>
+    <div data-tip="freed"><small>Spend freed / day</small><b class="n">${inr(r.impact.freedPerDay)}</b></div>
+    <div class="head"><span class="hl">${esc(r.briefing.headline)}</span>${storm}${broken}<small>If every move is approved · <a href="#details">See the reasoning</a></small></div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -978,32 +1179,32 @@ const TIPS = {
     const key = el.dataset.key, d = state.data; if (!d) return '';
     const last = [...new Set(d.clean.map(r => r.date))].sort().slice(-1)[0];
     if (key === 'Shopify') {
-      if (!d.cleanOrders.length) return `<h4>🛍️ Shopify orders</h4><p>Not connected. Without real orders Drishti estimates true revenue (platforms usually over-claim ~1.6×). Upload an orders CSV under “Use your own data”.</p>`;
+      if (!d.cleanOrders.length) return `<h4>${ic('bag')} Shopify orders</h4><p>Not connected. Without real orders Drishti estimates true revenue (platforms usually over-claim ~1.6×). Upload an orders CSV under “Use your own data”.</p>`;
       const rows = d.cleanOrders.filter(o => o.date === last);
-      return `<h4>🛍️ Shopify orders · what really sold</h4><p>Orders tagged by UTM source. This is how Drishti checks what the ad platforms claim.</p>
+      return `<h4>${ic('bag')} Shopify orders · what really sold</h4><p>Orders tagged by UTM source. This is how Drishti checks what the ad platforms claim.</p>
         <div class="k">Latest pull · ${esc(last)}</div>${glimpseRows(rows, [['Source', o => o.channel], ['Orders', o => Math.round(o.orders).toLocaleString('en-IN'), 'n'], ['Revenue', o => inr(o.revenue), 'n']])}${fedBlock(key)}`;
     }
     if (key === 'Competitors') {
-      if (!d.cleanComp.length) return `<h4>🕵️ Competitor ads</h4><p>Not connected. Upload a competitor CSV (Meta Ad Library export) to let the Cohort agent compare.</p>`;
+      if (!d.cleanComp.length) return `<h4>${ic('search')} Competitor ads</h4><p>Not connected. Upload a competitor CSV (Meta Ad Library export) to let the Cohort agent compare.</p>`;
       const rows = d.cleanComp.filter(c => c.date === last);
-      return `<h4>🕵️ Competitor ads · Meta Ad Library</h4><p>What rival brands run, and how well people engage with it.</p>
+      return `<h4>${ic('search')} Competitor ads · Meta Ad Library</h4><p>What rival brands run, and how well people engage with it.</p>
         <div class="k">Latest pull · ${esc(last)}</div>${glimpseRows(rows.length ? rows : d.cleanComp.slice(-3), [['Brand', c => c.competitor], ['Where', c => c.channel], ['Campaign', c => cut(c.campaign, 26)], ['Engage', c => (c.rate * 100).toFixed(1) + '%', 'n']])}${fedBlock(key)}`;
     }
     if (key === 'News') {
       const h = state.result?.shock?.headlines || [];
-      return `<h4>📰 Live news · Google News</h4><p>Read at the start of every run, so the Orchestrator can tell a market shock (outage, CPM war, budget cuts) from a problem in our ads.</p>
+      return `<h4>${ic('news')} Live news · Google News</h4><p>Read at the start of every run, so the Orchestrator can tell a market shock (outage, CPM war, budget cuts) from a problem in our ads.</p>
         ${h.length ? `<div class="k">Headlines read on the last run</div><ul>${h.slice(0, 4).map(x => `<li>${esc(cut(x.title, 90))}</li>`).join('')}</ul>` : '<div class="k">Headlines appear here after a run</div>'}`;
     }
     if (key === 'Calendar') {
       const now = Date.now();
       const up = EVENTS.map(x => ({ ...x, in: Math.round((new Date(x.date + 'T00:00:00Z') - now) / 864e5) })).filter(x => x.in >= -3).slice(0, 4);
-      return `<h4>📅 India sale calendar</h4><p>Festivals push CPMs up. The Budget agent paces spend around them, and the shock filter won’t blame an ad for a festival dip.</p>
+      return `<h4>${ic('calendar')} India sale calendar</h4><p>Festivals push CPMs up. The Budget agent paces spend around them, and the shock filter won’t blame an ad for a festival dip.</p>
         ${glimpseRows(up, [['Event', e => e.name], ['Date', e => e.date], ['In', e => (e.in >= 0 ? e.in + ' days' : 'just passed'), 'n']])}${fedBlock(key)}`;
     }
     // An ad channel: show the latest rows streaming in
     const rows = d.clean.filter(r => r.channel === key && r.date === last).sort((x, y) => y.spend - x.spend);
     const tot = rows.reduce((s, r) => ({ spend: s.spend + r.spend, clicks: s.clicks + r.clicks, rev: s.rev + r.platform_revenue }), { spend: 0, clicks: 0, rev: 0 });
-    return `<h4>${ICONS[key] || '📊'} ${esc(key)} · ${rows.length} rows a day</h4>
+    return `<h4>${ic(ICONS[key] || 'chart')} ${esc(key)} · ${rows.length} rows a day</h4>
       <p>Per ad × region: spend, impressions, reach, clicks, conversions and the revenue ${esc(key)} <i>claims</i>.</p>
       <div class="k">Latest pull · ${esc(last)} · top ${Math.min(4, rows.length)} of ${rows.length}</div>
       ${glimpseRows(rows.slice(0, 4), [['Ad', r => cut(r.ad, 24)], ['Region', r => cut(r.region, 12)], ['Spend', r => inr(r.spend), 'n'], ['Clicks', r => r.clicks.toLocaleString('en-IN'), 'n'], ['Claimed', r => inr(r.platform_revenue), 'n']])}
@@ -1013,27 +1214,28 @@ const TIPS = {
   agent(el) {
     const a = agent(el.dataset.id);
     const said = state.agentLog[a.id] || [];
-    return `<h4>${a.icon} ${esc(a.name)} ${esc(a.role)}</h4><p>${esc(a.job)}</p><div class="k">Reads</div><p>${esc(a.reads)}</p>
+    return `<h4>${ic(a.icon)} ${esc(a.name)} · ${esc(a.role)}</h4><p>${esc(a.job)}</p><div class="k">Reads</div><p>${esc(a.reads)}</p>
       <div class="k">${said.length ? 'On this run' : 'Status'}</div>${said.length ? `<ul>${said.slice(-3).map(t => `<li>${esc(cut(t, 220))}</li>`).join('')}</ul>` : '<p>Waiting for Run.</p>'}`;
   },
   rec(el) {
     const a = state.result?.actions.find(x => x.id === Number(el.dataset.id)); if (!a) return '';
     // The card itself shows one short line each; the full observation and advice live here.
-    return `<h4>${esc(agentName(a.agent))} · evidence</h4><p>👀 ${esc(a.observed || '')}</p><p>💡 ${esc(a.recommend || a.title)}</p><p>${esc(a.detail)}</p>
+    return `<h4>${ic(agent(a.agent).icon)} ${esc(agentName(a.agent))} · recommendation</h4><p><b>${esc(a.recommend || a.title)}</b>${money(a) ? ` <span class="money">${money(a)}</span>` : ''}</p>
+      <div class="k">What it saw</div><p>${esc(a.observed || '')}</p><p>${esc(a.detail)}</p>
       <div class="k">Why ${a.tier === 'auto' ? 'it acts on its own' : 'it asks you'}</div>
       <p>${a.tier === 'auto' ? (a.rule ? 'This is your standing rule, so it runs without asking.' : 'Small move (under ₹5,000/day or a budget shift under 10%), so it runs and can be undone.') : 'Big move, or the data/market needs a human eye, so it waits for Approve.'}</p>`;
   },
   act(el) {
     const a = state.result?.actions.find(x => x.id === Number(el.dataset.id)); if (!a) return '';
     const sample = state.data?.source === 'Sample';
-    return `<h4>⚙ What the agent does</h4><p>${esc(a.execute || a.title)}</p>
+    return `<h4>${ic('zap')} What the agent does</h4><p>${esc(a.execute || a.title)}</p>
       <div class="k">On a connected account</div><p>${esc(apiCall(a))}${sample ? ' <i>(sample brand: applied to the sample data)</i>' : ''}</p>
       <div class="k">Fed back into ①</div><p class="new">↺ ${esc(a.feedback || a.title)}</p>
-      ${state.mail[a.id] ? `<div class="k">Report</div><p>📧 ${esc(state.mail[a.id].text)}</p>` : ''}`;
+      ${state.mail[a.id] ? `<div class="k">Report</div><p>${esc(state.mail[a.id].text)}</p>` : ''}`;
   },
   ahi() {
     const r = state.result; if (!r) return '';
-    return `<h4>Agent Health Index</h4><p>One score for how healthy the ad account is, graded on TRUE revenue. Weighted geometric mean, so one weak area can’t hide behind strong ones.</p>
+    return `<h4>${ic('gauge')} Agent Health Index</h4><p>One score for how healthy the ad account is, graded on TRUE revenue. Weighted geometric mean, so one weak area can’t hide behind strong ones.</p>
       ${glimpseRows(['P2', 'P3', 'P4', 'P5'].map(k => ({ k })), [['Agent', x => agentName(x.k)], ['Before', x => r.ahi.before.scores[x.k], 'n'], ['After', x => r.ahi.after.scores[x.k], 'n']])}
       <p>Data gate (Signal): ${r.signal.trustScore}/100 → ${r.signal.gateOpen ? 'open' : 'SHUT'}</p>`;
   },
@@ -1063,7 +1265,30 @@ const TIPS = {
   watch() {
     return `<h4>Always watching</h4><p>Between full checks the Orchestrator keeps reading the streams in ① and your rules. A full check (Run) re-reads everything, diagnoses, recommends and acts.</p><p style="color:var(--muted)">${nIN(rowsSeen)} rows read since you opened this page.</p>`;
   },
-  email() { return `<h4>✉️ Try it with your own email address</h4><p><b>Replace this email address with yours</b> to receive the action reports and feel the live demo: press Run, and the agents email you what they did.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">Sent via FormSubmit. The first time, your inbox gets a one-time “Activate” email; click it, run the loop again, and reports arrive.</p>`; },
+  email() { return `<h4>${ic('mail')} Try it with your own email address</h4><p><b>Replace this email address with yours</b> to receive the action reports and feel the live demo: press Run, and the agents email you what they did.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">Sent via FormSubmit. The first time, your inbox gets a one-time “Activate” email; click it, run the loop again, and reports arrive.</p>`; },
+  // one line of the agents' feed, in full
+  ev(el) {
+    const a = agent(el.dataset.agent);
+    return `<h4>${ic(a.icon || 'compass')} ${esc(a.name || 'Orchestrator')}</h4><p>${esc(el.dataset.full)}</p>
+      ${a.job ? `<div class="k">What this agent does</div><p>${esc(a.job)}</p>` : ''}`;
+  },
+  roas() {
+    const r = state.result; if (!r) return '';
+    return `<h4>${ic('chart')} True ROAS</h4><p>Revenue per rupee of ad spend, counted from real orders, not what the ad platforms claim.</p>
+      <p><b>${r.impact.trueRoasNow} → ${r.impact.trueRoasProjected}</b> if every move is approved.</p>
+      ${glimpseRows(r.signal.perChannel, [['Channel', c => c.channel], ['Claimed', c => c.platformRoas, 'n'], ['True', c => c.trueRoas, 'n'], ['Over-claim', c => c.overclaim + '×', 'n']])}`;
+  },
+  tired() {
+    const r = state.result; if (!r) return '';
+    const tired = r.fatigue.ads.filter(a => a.status === 'fatigued');
+    return `<h4>${ic('flame')} Spend on tired ads</h4><p>${r.impact.fatiguedPctNow}% of spend was going to ads people have stopped responding to. The Fatigue agent pauses them and Creative drafts replacements.</p>
+      ${tired.length ? glimpseRows(tired, [['Ad', a => cut(a.ad, 26)], ['Score', a => a.score, 'n'], ['CTR', a => `${a.ctrBase}% → ${a.ctrNow}%`, 'n']]) : ''}`;
+  },
+  freed() {
+    const r = state.result; if (!r) return '';
+    return `<h4>${ic('scale')} Spend freed per day</h4><p><b>${inr(r.impact.freedPerDay)}</b> a day stops going to leaks (tired ads, losing regions, held campaigns) and is moved to what works.</p>
+      <ul>${r.actions.filter(a => a.impact).slice(0, 6).map(a => `<li>${esc(cut(a.recommend || a.title, 90))} · <b>${money(a)}</b></li>`).join('')}</ul>`;
+  },
   'brand-glowveda'() { return `<h4>Glowveda</h4><p>Shreya’s skincare brand · ₹1.5 Cr/month on Facebook, Instagram, Google and JioHotstar TV. Fictional sample data.</p>`; },
   'brand-crunchkart'() { return `<h4>Crunchkart</h4><p>Aarush’s snacks brand · ₹9 L/month on Facebook, Instagram and Google. Fictional sample data.</p>`; },
   'brand-shyamlal'() { return `<h4>Shyamlal Masale</h4><p>Mr. Shyamlal’s Indore spices brand, moving from TV to digital · ₹40 L/month on Facebook, Instagram, Google and JioHotstar TV. Fictional sample data.</p>`; },
@@ -1087,31 +1312,42 @@ function apiCall(a) {
   }[a.kind] || a.title;
 }
 
-// One floating card follows whatever is hovered (or focused / tapped on phones).
-const tip = $('#tip');
-let tipFor = null;
-function showTip(el) {
+// DETAIL PANEL: clicking (or pressing Enter on) anything with data-tip="name" opens
+// the sliding panel on the right with TIPS[name]. The cards themselves stay short.
+function openDetail(el) {
   const html = TIPS[el.dataset.tip]?.(el);
-  if (!html) return hideTip();
-  tipFor = el;
-  tip.innerHTML = html; tip.hidden = false;
-  const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
-  // prefer below the element; flip above if there is no room; keep inside the screen
-  let top = r.bottom + 8;
-  if (top + t.height > innerHeight - 8) top = Math.max(8, r.top - t.height - 8);
-  const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), innerWidth - t.width - 8);
-  tip.style.top = top + 'px'; tip.style.left = left + 'px';
-  // highlight the whole row when a recommendation or action is hovered
-  $$('.row.hl').forEach(x => x.classList.remove('hl'));
+  if (!html) return;
+  $('#drawerBody').innerHTML = html;
+  // the panel title comes from the card's own heading (moved up into the panel header)
+  const h = $('#drawerBody h4');
+  $('#drawerTitle').textContent = h ? h.textContent.trim() : 'Details';
+  h?.remove();
+  openSheet('#drawer');
+  // keep the recommendation + its action highlighted while their detail is open
   el.closest('.row')?.classList.add('hl');
 }
-function hideTip() { tip.hidden = true; tipFor = null; $$('.row.hl').forEach(x => x.classList.remove('hl')); }
-document.addEventListener('mouseover', e => { const el = e.target.closest('[data-tip]'); if (el && el !== tipFor) showTip(el); else if (!el && tipFor) hideTip(); });
-document.addEventListener('focusin', e => { const el = e.target.closest('[data-tip]'); if (el) showTip(el); });
-document.addEventListener('focusout', hideTip);
-// Phones have no hover: a tap shows the card, a tap elsewhere hides it.
-document.addEventListener('touchstart', e => { const el = e.target.closest('[data-tip]'); if (el && !e.target.closest('button, input, a')) showTip(el); else hideTip(); }, { passive: true });
-addEventListener('scroll', hideTip, { passive: true, capture: true });
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-tip]');
+  if (!el) return;
+  // buttons, fields and links inside a card do their own job (Approve, Undo, typing…)
+  const ctl = e.target.closest('button, input, select, textarea, a, label');
+  if (ctl && ctl !== el && el.contains(ctl)) return;
+  openDetail(el);
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[data-tip][tabindex]')) { e.preventDefault(); openDetail(e.target); }
+});
+
+// SIDEBAR: highlight the section you are looking at
+function syncSideNav() {
+  let on = '#loop';
+  for (const id of ['#results', '#details', '#askCard']) {
+    const el = $(id);
+    if (el && !el.closest('[hidden]') && !el.hidden && el.getBoundingClientRect().top < innerHeight * 0.4) on = id;
+  }
+  $$('.side-nav a[href^="#"]').forEach(a => a.classList.toggle('on', a.getAttribute('href') === on));
+}
+addEventListener('scroll', syncSideNav, { passive: true });
 
 // ---------------------------------------------------------------------------
 // Details below the fold
@@ -1128,7 +1364,7 @@ function renderDetails(r) {
   // Claimed vs true ROAS per channel (the measurement trap)
   const max = Math.max(...r.signal.perChannel.map(c => c.platformRoas), 1);
   $('#roasCard').innerHTML = `<h3>Platform-claimed vs true ROAS</h3>
-    <div class="legend"><i style="background:var(--line-strong)"></i>Platform says<i style="background:var(--sky)"></i>Shopify orders say</div>
+    <div class="legend"><i style="background:var(--line-strong)"></i>Platform says<i style="background:var(--orange)"></i>Shopify orders say</div>
     <div class="bars">${r.signal.perChannel.map(c => `<div class="row"><b>${esc(c.channel)}</b><div><div class="track">
       <div class="claimed" style="width:${(c.platformRoas / max) * 100}%"></div><div class="true" style="width:${(c.trueRoas / max) * 100}%"></div></div>
       <div class="nums">${c.platformRoas} claimed · ${c.trueRoas} true · over-claims ${c.overclaim}×</div></div></div>`).join('')}</div>
@@ -1190,8 +1426,34 @@ function fitLoop() {
   document.documentElement.style.setProperty('--above', top + 'px');
 }
 addEventListener('resize', fitLoop);
-new ResizeObserver(fitLoop).observe($('.controls'));
+new ResizeObserver(fitLoop).observe($('.bar'));
 $('#ownBtn').addEventListener('click', fitLoop);
+
+// ---------------------------------------------------------------------------
+// ABOUT + AGENTS panels (short on purpose: one idea per line)
+// ---------------------------------------------------------------------------
+$('#aboutBody').innerHTML = `
+  <p class="about-lead">Brands lose a big share of their ad money to tired ads, over-claimed results and wrong-channel spend. <b>Drishti AI</b> watches every rupee and fixes the leaks for them.</p>
+  <ol class="about-steps">
+    <li><div><b>Data in</b><span>Ad channels, real orders, competitor ads, news and the sale calendar.</span></div></li>
+    <li><div><b>Agents think</b><span>Six AI agents check trust, fatigue, creatives, audiences and budget.</span></div></li>
+    <li><div><b>Recommend</b><span>Each finding becomes one clear fix, with the money it saves.</span></div></li>
+    <li><div><b>Act &amp; report</b><span>Small fixes run on their own, big ones wait for you, and every action is emailed.</span></div></li>
+  </ol>
+  <div class="facts"><div><b>6</b><small>AI agents</small></div><div><b>20+</b><small>data partners</small></div><div><b>4</b><small>step loop</small></div></div>
+  <div class="about-k">Built-in guardrails</div>
+  <ul class="guard">
+    <li><span data-icon="shield"></span>If tracking breaks or the market is in shock, nothing runs without you.</li>
+    <li><span data-icon="undo"></span>Every automatic fix can be undone in one click.</li>
+    <li><span data-icon="sliders"></span>Your standing rules come first.</li>
+  </ul>
+  <div class="team-card"><span data-icon="phoenix"></span><div><b>Team Phoenix</b><small>Abhikalp 2026 · Case 5</small></div></div>`;
+
+$('#agentsBody').innerHTML = `<div class="agent-list">${AGENTS.map(a => `
+  <div class="agent-card" style="--c:var(--${a.id})"><span class="av" data-icon="${a.icon}"></span>
+    <div><b>${esc(a.name)}</b><span class="role">${esc(a.role)}</span><p>${esc(a.job)}</p></div></div>`).join('')}</div>
+  <p class="hint">On the agent screen, click any agent to see what it said on the last run.</p>`;
+fillIcons();
 
 // Start with the sample brand loaded so Run works straight away.
 // A link ending in ?run starts the agents immediately (handy for sharing a live demo).
