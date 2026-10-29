@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drishti AI · Pitch</title>
+<meta name="description" content="Drishti AI in three minutes: three brands, five agents, every ad leak found, fixed and measured.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=Noto+Sans+Tamil:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👁</text></svg>">
+<link rel="stylesheet" href="pitch.css?v=1">
+<script>
+  // Light mode by default; restore dark mode if the visitor chose it before (same key as the live app).
+  try { if (localStorage.getItem('drishti-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
+</script>
+</head>
+<body>
+
+<!-- ============ Top bar: view switch + brand switch ============ -->
+<header class="bar">
+  <a class="logo" href="./pitch.html"><span>👁</span> Drishti AI</a>
+
+  <!-- Three ways to tell the same story (keys: S, C, J) -->
+  <div class="seg" id="modes" role="tablist" aria-label="View">
+    <button data-mode="story" class="on" title="Key S">Story</button>
+    <button data-mode="score" title="Key C">3-brand scorecard</button>
+    <button data-mode="journey" title="Key J">One ad's journey</button>
+  </div>
+
+  <!-- The three sample brands (keys: 1, 2, 3) -->
+  <div class="seg" id="brands" role="tablist" aria-label="Brand"></div>
+
+  <nav>
+    <a href="./" title="The full app with live connectors, rules and email reports">Live app ↗</a>
+    <button class="icon-btn" id="themeBtn" aria-label="Switch theme">🌙</button>
+  </nav>
+</header>
+
+<!-- ============ The stage: one view at a time ============ -->
+<main id="stage" class="stage"></main>
+
+<!-- Story progress: dots + arrows (keys ← →) -->
+<footer class="dock" id="dock">
+  <button class="nav-btn" id="prev" aria-label="Previous">←</button>
+  <div class="dots" id="dots"></div>
+  <button class="nav-btn" id="next" aria-label="Next">→</button>
+</footer>
+
+<script type="module" src="pitch.js?v=1"></script>
+</body>
+</html>

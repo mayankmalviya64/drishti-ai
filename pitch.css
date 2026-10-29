@@ -1,0 +1,207 @@
+/* pitch.css — styles for the presenter page (pitch.html).
+   Same palette as the live app (app.css): slate background, navy ink, sky-blue accent.
+   Everything is sized to fill one laptop / projector screen without scrolling. */
+
+:root {
+  --bg: #eef1f5; --bg-top: #e0f2fe; --panel: #ffffff; --ink: #0f172a; --muted: #64748b;
+  --line: #e2e8f0; --soft: #f1f5f9; --sky: #0ea5e9; --sky-ink: #0369a1; --sky-soft: #e0f2fe;
+  --green: #059669; --green-soft: #d1fae5; --amber: #b45309; --amber-soft: #fef3c7; --red: #dc2626; --red-soft: #fee2e2;
+  --shadow: 0 1px 2px rgba(15, 23, 42, .05), 0 10px 30px rgba(15, 23, 42, .07);
+  /* one colour per agent, same as the live app */
+  --ORC: #0f172a; --P1: #6366f1; --P2: #ea580c; --P3: #c026d3; --P4: #0284c7; --P5: #0d9488;
+}
+:root[data-theme="dark"] {
+  --bg: #0b1220; --bg-top: #0c2236; --panel: #111a2b; --ink: #e2e8f0; --muted: #94a3b8; --line: #1e293b;
+  --soft: #172235; --sky: #38bdf8; --sky-ink: #7dd3fc; --sky-soft: #0c3049;
+  --green: #34d399; --green-soft: #0b3b2e; --amber: #fbbf24; --amber-soft: #3b2f0b; --red: #f87171; --red-soft: #3f1616;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4); --ORC: #cbd5e1;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  display: flex; flex-direction: column; min-height: 100vh;
+  background: linear-gradient(180deg, var(--bg-top) 0, var(--bg) 420px) no-repeat, var(--bg);
+  color: var(--ink);
+  font: 15px/1.45 Inter, "Noto Sans Devanagari", "Noto Sans Tamil", system-ui, sans-serif;
+}
+h1, h2, h3, .num { font-family: "Space Grotesk", Inter, sans-serif; margin: 0; }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* ---------- top bar ---------- */
+.bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 22px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.logo { font: 700 18px "Space Grotesk", sans-serif; color: var(--ink); text-decoration: none; white-space: nowrap; }
+.bar nav { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.bar nav a { color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500; }
+.bar nav a:hover { color: var(--sky-ink); }
+.icon-btn { background: var(--soft); border: 1px solid var(--line); border-radius: 999px; width: 34px; height: 34px; }
+
+/* segmented switches (view + brand) */
+.seg { display: flex; background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button { border: 0; background: none; padding: 6px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.seg button.on { background: var(--panel); color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, .12); }
+.seg button kbd { font: 600 10px Inter, sans-serif; color: var(--muted); opacity: .7; margin-right: 4px; }
+
+/* ---------- stage ---------- */
+.stage { flex: 1; width: min(1180px, 100%); margin: 0 auto; padding: 26px 22px 8px; display: flex; flex-direction: column; }
+.scene { flex: 1; display: flex; flex-direction: column; gap: 20px; animation: rise .45s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+.kicker { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--sky-ink); }
+.scene h1 { font-size: clamp(26px, 3.4vw, 42px); line-height: 1.12; letter-spacing: -.01em; }
+.scene h1 em { font-style: normal; color: var(--sky-ink); }
+.lede { color: var(--muted); font-size: 16px; max-width: 760px; margin: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 18px 20px; }
+
+/* ---------- Story 1 · the leak ---------- */
+.versus { display: grid; grid-template-columns: 1fr auto 1fr; gap: 18px; align-items: stretch; }
+.claim { text-align: center; padding: 26px 18px; }
+.claim .num { font-size: clamp(54px, 8vw, 96px); line-height: 1; font-weight: 700; }
+.claim.fake .num { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 4px; text-decoration-color: color-mix(in srgb, var(--red) 70%, transparent); }
+.claim.real .num { color: var(--red); }
+.claim .what { margin-top: 8px; font-weight: 600; }
+.claim .from { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.vs { align-self: center; font: 700 15px "Space Grotesk"; color: var(--muted); }
+.leaks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.leak { display: flex; gap: 12px; align-items: flex-start; }
+.leak .big { font: 700 28px "Space Grotesk"; color: var(--amber); min-width: 78px; }
+.leak b { display: block; }
+.leak span { color: var(--muted); font-size: 13px; }
+.persona { color: var(--muted); font-style: italic; font-size: 14px; margin: 0; }
+
+/* ---------- Story 2 · agents at work ---------- */
+.work { display: grid; grid-template-columns: 250px 1fr; gap: 20px; flex: 1; }
+.sources { display: flex; flex-direction: column; gap: 8px; }
+.src { display: flex; align-items: center; gap: 10px; padding: 9px 12px; font-size: 14px; font-weight: 500; position: relative; overflow: hidden; }
+.src small { margin-left: auto; color: var(--muted); font-size: 11px; }
+/* a light sweep across each source tile = data streaming in */
+.src::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--sky) 18%, transparent), transparent); transform: translateX(-100%); animation: sweep 2.4s linear infinite; animation-delay: var(--d, 0s); }
+@keyframes sweep { to { transform: translateX(100%); } }
+.agents { display: flex; flex-direction: column; gap: 9px; }
+.ag { display: grid; grid-template-columns: 40px 150px 1fr; gap: 12px; align-items: center; padding: 11px 16px; border-left: 4px solid var(--c);
+  opacity: .28; filter: grayscale(1); transition: opacity .35s, filter .35s, transform .35s; }
+.ag.lit { opacity: 1; filter: none; transform: translateX(4px); }
+.ag .ic { font-size: 22px; text-align: center; }
+.ag .nm b { display: block; font-size: 15px; }
+.ag .nm span { color: var(--muted); font-size: 12px; }
+.ag .find { font-size: 14px; }
+.ag .find b { color: var(--c); }
+
+/* ---------- Story 3 · decisions ---------- */
+.health { display: flex; align-items: center; gap: 16px; }
+.meter { flex: 1; height: 12px; background: var(--soft); border-radius: 999px; overflow: hidden; border: 1px solid var(--line); }
+.meter i { display: block; height: 100%; width: var(--w); background: linear-gradient(90deg, var(--red), var(--amber) 50%, var(--green)); transition: width .6s ease; border-radius: 999px; }
+.health .num { font-size: 30px; font-weight: 700; min-width: 56px; text-align: right; }
+.health small { color: var(--muted); font-size: 12px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.col h3 { font-size: 16px; display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.col h3 span { color: var(--muted); font: 500 12px Inter; }
+.act { display: flex; gap: 12px; align-items: center; padding: 11px 14px; margin-bottom: 8px; border-left: 4px solid var(--c); animation: rise .35s ease both; }
+.act .t { flex: 1; font-size: 14px; }
+.act .t small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px;
+  /* one line only, so the screen never scrolls */ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46ch; }
+.act .t { min-width: 0; }
+.act .rs { font: 700 14px "Space Grotesk"; color: var(--green); white-space: nowrap; }
+.btn { border: 0; background: var(--ink); color: var(--panel); border-radius: 10px; padding: 8px 14px; font-weight: 600; font-size: 13px; white-space: nowrap; }
+.btn.ghost { background: var(--soft); color: var(--ink); border: 1px solid var(--line); }
+.btn.go { background: var(--sky); color: #fff; }
+.more { color: var(--muted); font-size: 12px; padding-left: 4px; }
+
+/* ---------- Story 4 · fresh ads ---------- */
+.ads { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.adc { display: flex; flex-direction: column; gap: 8px; }
+.adc .lang { font: 700 12px Inter; letter-spacing: .08em; text-transform: uppercase; color: var(--P3); }
+.adc .hook { font: 700 20px/1.25 "Space Grotesk", "Noto Sans Devanagari", "Noto Sans Tamil", sans-serif; }
+.adc .head { color: var(--muted); }
+.adc .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.cta { background: var(--ink); color: var(--panel); border-radius: 8px; padding: 5px 12px; font-size: 13px; font-weight: 600; }
+.ok { color: var(--green); font-size: 12px; font-weight: 600; }
+.bad { color: var(--red); font-size: 12px; font-weight: 600; }
+.fit { display: flex; align-items: center; gap: 14px; }
+.fit .arrow { font: 700 22px "Space Grotesk"; color: var(--sky); }
+
+/* ---------- Story 5 · result ---------- */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.kpi { text-align: center; padding: 20px 14px; }
+.kpi .lbl { color: var(--muted); font-size: 13px; font-weight: 600; }
+.kpi .num { font-size: clamp(30px, 4vw, 46px); font-weight: 700; margin: 6px 0 2px; }
+.kpi .num s { color: var(--muted); font-size: .55em; text-decoration-thickness: 2px; margin-right: 6px; }
+.kpi .goal { font-size: 12px; font-weight: 600; }
+.goal.met { color: var(--green); }
+.goal.near { color: var(--amber); }
+.trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.mini { display: flex; flex-direction: column; gap: 4px; cursor: pointer; transition: border-color .2s; }
+.mini.on { border-color: var(--sky); }
+.mini b { font-size: 15px; }
+.mini span { color: var(--muted); font-size: 13px; }
+
+/* ---------- Scorecard (3 brands × what the case asks for) ---------- */
+.grid3 { display: grid; grid-template-columns: 210px repeat(3, 1fr); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--panel); box-shadow: var(--shadow); }
+.grid3 > div { padding: 11px 14px; border-top: 1px solid var(--line); font-size: 14px; }
+.grid3 .hd { border-top: 0; background: var(--soft); }
+.grid3 .hd b { display: block; font: 700 16px "Space Grotesk"; }
+.grid3 .hd span { color: var(--muted); font-size: 12px; }
+.grid3 .rh b { display: block; font-size: 14px; }
+.grid3 .rh span { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.grid3 .rh span.ask { color: var(--sky-ink); }
+.grid3 .cell { opacity: 0; transform: translateY(6px); transition: opacity .35s, transform .35s; }
+.grid3 .cell.in { opacity: 1; transform: none; }
+.grid3 .cell b { font-family: "Space Grotesk"; }
+.grid3 .total { background: color-mix(in srgb, var(--sky-soft) 60%, var(--panel)); }
+.tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-left: 4px; }
+.tag.auto { background: var(--green-soft); color: var(--green); }
+.tag.ask { background: var(--amber-soft); color: var(--amber); }
+.score-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+/* ---------- One ad's journey ---------- */
+.steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; position: relative; }
+.stp { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 14px; padding: 10px 12px; opacity: .45; transition: opacity .3s, border-color .3s; }
+.stp.on { opacity: 1; border-color: var(--sky); box-shadow: var(--shadow); }
+.stp.done { opacity: 1; }
+.stp .n { font: 700 12px Inter; color: var(--sky-ink); }
+.stp b { display: block; font-size: 14px; }
+.stp span { color: var(--muted); font-size: 12px; }
+.panel { flex: 1; display: grid; grid-template-columns: 1.1fr 1fr; gap: 18px; align-items: start; }
+.spark { width: 100%; height: 170px; display: block; }
+.spark .ln { fill: none; stroke: var(--P2); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.spark .ar { fill: color-mix(in srgb, var(--P2) 12%, transparent); }
+.spark .bl { stroke: var(--muted); stroke-dasharray: 4 4; stroke-width: 1.5; }
+.spark text { fill: var(--muted); font: 12px Inter; }
+.checks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 9px; }
+.checks li { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-radius: 12px; background: var(--soft); font-size: 14px; animation: rise .35s ease both; }
+.checks li.hit { background: var(--red-soft); font-weight: 600; }
+.checks li i { font-style: normal; width: 22px; text-align: center; }
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fact .num { font-size: 28px; font-weight: 700; }
+.fact span { color: var(--muted); font-size: 12px; }
+
+/* ---------- bottom dock (story only) ---------- */
+.dock { display: flex; justify-content: center; align-items: center; gap: 14px; padding: 10px 0 16px; }
+.nav-btn { width: 38px; height: 38px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); font-size: 16px; }
+.dots { display: flex; gap: 8px; }
+.dots button { border: 0; padding: 0; width: 10px; height: 10px; border-radius: 999px; background: var(--line); transition: width .25s, background .25s; }
+.dots button.on { width: 28px; background: var(--sky); }
+
+/* ---------- phones and small laptops ---------- */
+@media (max-width: 860px) {
+  .bar { padding: 10px 16px; }
+  .stage { padding: 18px 16px 8px; }
+  .versus, .work, .cols, .panel { grid-template-columns: 1fr; }
+  .vs { justify-self: center; }
+  .leaks, .ads, .trio, .steps { grid-template-columns: 1fr; }
+  .kpis, .facts { grid-template-columns: 1fr 1fr; }
+  .ag { grid-template-columns: 32px 1fr; }
+  .ag .find { grid-column: 1 / -1; }
+  .grid3 { grid-template-columns: 1fr; }
+  .grid3 .hd.corner { display: none; }
+  /* keep everything inside the phone's width: switches scroll sideways instead of stretching the page */
+  .bar, .stage { min-width: 0; max-width: 100vw; }
+  .seg { overflow-x: auto; max-width: 100%; min-width: 0; }
+  .bar nav { margin-left: 0; }
+}

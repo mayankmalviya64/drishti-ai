@@ -22,7 +22,7 @@ Add a twist (pixel break or market shock) to see the diagnosis change: tracking 
 | Orchestrator | `lib/agent.js` | LLM tool-calling loop over the five agents; P3 writes regional ad copy + ASCI check; rules-engine fallback |
 | LLM client | `lib/llm.js` | Groq (Llama 3.3 70B) → Gemini fallback, OpenAI-compatible |
 | Live news | `lib/news.js` | Google News RSS for the "is it us or the world?" shock filter |
-| Sample data | `lib/sample.js` | Glowveda (Shreya) and Crunchkart (Aarush) 14-day exports |
+| Sample data | `lib/sample.js` | Glowveda (Shreya), Crunchkart (Aarush) and Shyamlal Masale (Mr. Shyamlal) 14-day exports |
 | API | `api/run.js` (stream), `api/connect.js` (Sheets, Meta), `api/notify.js` (Slack/Discord), `api/ask.js`, `api/health.js` | Vercel functions |
 
 ## Environment variables (Vercel)

@@ -1,7 +1,7 @@
 // scripts/check.mjs — quick console check of the agent maths on the sample brands.
 import { makeSample } from '../lib/sample.js';
 import { analyze, buildActions, scoreAgents } from '../lib/analyze.js';
-for (const [b, tw] of [['glowveda', {}], ['crunchkart', {}], ['glowveda', { pixelBreak: true }], ['glowveda', { marketShock: true }]]) {
+for (const [b, tw] of [['glowveda', {}], ['crunchkart', {}], ['shyamlal', {}], ['glowveda', { pixelBreak: true }], ['glowveda', { marketShock: true }]]) {
   const s = makeSample(b, { twists: tw }); const a = analyze(s.rows, s.orders, { brand: s.brand });
   const acts = buildActions(a, [{ ad: 'x', variants: [1, 2] }], { external: !!tw.marketShock }); const sc = scoreAgents(a, acts, a.creative.adsToReplace.length);
   console.log('==', b, JSON.stringify(tw), 'trust', a.signal.trustScore);
