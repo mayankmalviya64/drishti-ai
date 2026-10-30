@@ -536,6 +536,7 @@ setChannels((store.get('drishti-channels') ?? 'email').split(',').filter(Boolean
 
 // ---------------------------------------------------------------------------
 // TELEGRAM TEAM: reports can go to several people, each with a role.
+//   Director    → decides every move AND can undo any action the agents already took (Mayank, on by default)
 //   Intern      → gets every report, for information only (no buttons)
 //   Manager     → can Approve / Hold / Reject moves up to a ₹/day limit you set
 //   Sr Manager  → can decide every move, any size
@@ -546,20 +547,33 @@ setChannels((store.get('drishti-channels') ?? 'email').split(',').filter(Boolean
 // ---------------------------------------------------------------------------
 const TG_BOT = 'drishti_phoenix_bot';
 const ROLES = {
+  director:  { label: 'Director',   can: 'Decides every move and can undo any action, from Telegram too' },
   intern:    { label: 'Intern',     can: 'Gets reports only' },
   manager:   { label: 'Manager',    can: 'Decides moves up to the limit below' },
   srmanager: { label: 'Sr Manager', can: 'Decides every move' },
 };
 const ALL_BRANDS = 'all';
 // Team Phoenix: the only people who can be invited (each invite is for one of these names)
-const TEAM_NAMES = ['Arsh', 'Ashish', 'Anurag', 'Biswa'];
+const TEAM_NAMES = ['Mayank', 'Arsh', 'Ashish', 'Anurag', 'Biswa'];
+// Mayank is on every visitor's team by default, as Director, so every run reports to him.
+// (chat = his Telegram chat with the bot; a chat id is not a secret, it only works through our bot)
+const DIRECTOR = { chat: '', name: 'Mayank', role: 'director', brand: 'all', phone: '919009601598' };
 const brandNames = () => [...new Set([...Object.values(BRANDS).map(b => b.name), state.data?.brand].filter(Boolean))];
 
 function loadTeam() {
-  try { const t = JSON.parse(store.get('drishti-team') || 'null'); if (Array.isArray(t)) return t; } catch {}
+  let team = [];
+  try { const t = JSON.parse(store.get('drishti-team') || 'null'); if (Array.isArray(t)) team = t; } catch {}
   // Older visits linked just one chat ("drishti-tg"); that person becomes the first Sr Manager
-  try { const one = JSON.parse(store.get('drishti-tg') || 'null'); if (one?.chat) return [{ ...one, role: 'srmanager', brand: ALL_BRANDS }]; } catch {}
-  return [];
+  if (!team.length) try { const one = JSON.parse(store.get('drishti-tg') || 'null'); if (one?.chat) team = [{ ...one, role: 'srmanager', brand: ALL_BRANDS }]; } catch {}
+  // Mayank is the Director: whoever is linked as Mayank gets that role…
+  for (const m of team) if (m.name === 'Mayank' || m.tgName === 'Mayank') Object.assign(m, { name: 'Mayank', role: 'director' });
+  // …and if he isn't on this device's team yet, add him (once; removing him later is respected)
+  if (DIRECTOR.chat && !store.get('drishti-director-added')) {
+    if (!team.some(m => m.chat === DIRECTOR.chat)) team.unshift({ ...DIRECTOR });
+    store.set('drishti-director-added', '1');
+  }
+  // the Director first in the list
+  return team.sort((a, b) => (b.role === 'director') - (a.role === 'director'));
 }
 state.team = loadTeam();
 state.invites = [];  // invite links sent out but not yet accepted: { code, role, brand, until }
@@ -569,12 +583,12 @@ const managerLimit = () => Math.max(0, Number(store.get('drishti-mgr-limit')) ||
 // Who gets this brand's reports, and can this person decide this action?
 const teamFor = brand => state.team.filter(m => m.brand === ALL_BRANDS || m.brand === brand);
 function canDecide(m, a) {
-  if (m.role === 'srmanager') return true;
+  if (m.role === 'director' || m.role === 'srmanager') return true;
   if (m.role === 'manager') return (Number(a.impact) || 0) <= managerLimit();
   return false; // intern: inform only
 }
 // Short label for whoever CAN decide an action, shown to the people who can't
-const whoDecides = a => ((Number(a.impact) || 0) <= managerLimit() ? 'Manager or Sr Manager' : 'Sr Manager');
+const whoDecides = a => ((Number(a.impact) || 0) <= managerLimit() ? 'Manager, Sr Manager or Director' : 'Sr Manager or Director');
 const roleLabel = m => ROLES[m.role]?.label || 'Intern';
 
 // Sidebar line: one person's number/name, or "3 people"
@@ -640,7 +654,8 @@ function renderTeam() {
 // One invite = one one-time code. We keep checking every code that is still waiting (10 minutes each).
 function invite() {
   if (!$('#invName').value) return;
-  const v = { code: Math.random().toString(36).slice(2, 10), name: $('#invName').value, role: $('#invRole').value, brand: $('#invBrand').value, until: Date.now() + 10 * 60 * 1000 };
+  // Mayank is always the Director
+  const v = { code: Math.random().toString(36).slice(2, 10), name: $('#invName').value, role: $('#invName').value === 'Mayank' ? 'director' : $('#invRole').value, brand: $('#invBrand').value, until: Date.now() + 10 * 60 * 1000 };
   state.invites.push(v);
   renderTeam();
   clearInterval(state.tgLinkPoll);
@@ -662,7 +677,8 @@ function invite() {
         saveTeam();
         log(`Telegram linked for ${x.name} as ${ROLES[x.role].label}`);
         const m = state.team.find(y => y.chat === j.chat);
-        const what = m.role === 'srmanager' ? 'You can approve, hold or reject every move.'
+        const what = m.role === 'director' ? 'You can approve, hold or reject every move, and undo any action the agents took (tap ↩ Undo).'
+          : m.role === 'srmanager' ? 'You can approve, hold or reject every move.'
           : m.role === 'manager' ? `You can approve, hold or reject moves up to ${inr(managerLimit())}/day. Bigger ones go to a Sr Manager.`
           : 'You will get every report for your information.';
         sendTgNote(m.chat, `👋 You are on the Drishti team as ${ROLES[m.role].label} for ${m.brand === ALL_BRANDS ? 'all brands' : m.brand}. ${what}`);
@@ -1463,8 +1479,10 @@ async function decide(id, act, from, by) {
     tellTeam('❌ Rejected');
   } else if (act === 'undo') {
     a.state = 'undone'; updateRow(a);
-    log(`You rolled back "${a.title}"`);
+    log(`${actor} rolled back "${a.title}"${via}`);
     feedBack(a, `restored: ${a.title}`);
+    if (!from) telegramNote(`↩ Undone on the site: ${a.title}`);
+    tellTeam('↩ Undone');
   }
   // Post the decision to the approvals channel (Slack / Discord), if set up
   try {
@@ -1504,9 +1522,9 @@ async function telegramReport(done, waiting) {
       const res = await fetch(API + '/api/telegram', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(20000),
         body: JSON.stringify({
-          chat: m.chat, brand: r.brand, runId: state.runId, role: roleLabel(m),
+          chat: m.chat, brand: r.brand, runId: state.runId, role: roleLabel(m), undo: m.role === 'director',
           health: `${r.ahi.before.value} → ${r.ahi.after.value}`,
-          done: done.map(a => a.feedback || a.title), doneCount: done.length,
+          done: done.map(a => ({ id: a.id, title: a.feedback || a.title })), doneCount: done.length,
           waiting: waiting.map(a => ({ id: a.id, agent: agentName(a.agent), title: a.recommend || a.title, impact: a.impact, act: canDecide(m, a), who: whoDecides(a) })),
         }),
       });
@@ -1544,10 +1562,19 @@ function pollTelegram() {
   const run = state.runId, until = Date.now() + 30 * 60 * 1000;
   state.tgPoll = setInterval(async () => {
     const open = state.result?.actions.filter(a => a.state === 'waiting') || [];
-    if (run !== state.runId || !open.length || Date.now() > until) return clearInterval(state.tgPoll);
+    const undoable = state.result?.actions.filter(a => a.state === 'done') || []; // the Director may undo these
+    if (run !== state.runId || (!open.length && !undoable.length) || Date.now() > until) return clearInterval(state.tgPoll);
     const deciders = teamFor(state.result.brand).filter(m => m.role !== 'intern').map(m => m.chat);
+    const directors = teamFor(state.result.brand).filter(m => m.role === 'director').map(m => m.chat);
     try {
-      const { decisions = {} } = await (await fetch(`${API}/api/telegram?run=${run}&open=${open.map(a => a.id).join(',')}&team=${deciders.join(',')}`)).json();
+      const { decisions = {}, undos = {} } = await (await fetch(`${API}/api/telegram?run=${run}&open=${open.map(a => a.id).join(',')}&team=${deciders.join(',')}&done=${undoable.map(a => a.id).join(',')}&directors=${directors.join(',')}`)).json();
+      // ↩ Undo taps from the Director
+      for (const a of undoable) {
+        const u = undos[a.id]; if (!u) continue;
+        const m = state.team.find(x => x.chat === u.by);
+        if (m?.role !== 'director') continue;
+        decide(a.id, 'undo', 'telegram', { chat: m.chat, name: m.name, role: roleLabel(m) });
+      }
       for (const a of open) {
         const d = typeof decisions[a.id] === 'string' ? { act: decisions[a.id] } : decisions[a.id];
         if (!d) continue;

@@ -2,14 +2,16 @@
 // Telegram action reports with Approve / Hold / Reject buttons (free Telegram Bot API).
 //
 // Three jobs in one route:
-//  1. POST from the page  { chat, brand, runId, health, role, done: [text], waiting: [{ id, agent, title, impact, act }] }
+//  1. POST from the page  { chat, brand, runId, health, role, undo, done: [{ id, title }], waiting: [{ id, agent, title, impact, act }] }
+//       `undo: true` (the Director) → the "Done" list comes with an ↩ Undo button per action.
 //       → sends one short summary, then one message with 3 buttons per action this person may decide.
 //       The page sends one POST per team member. `act: false` means their role can't decide that
 //       action (e.g. an Intern, or a Manager on a move above their limit), so it is listed without buttons.
 //     POST from the page  { chat, note } → sends one short line (e.g. "Approved on the site: …").
 //  2. GET ?link=<code>  → the visitor opened t.me/<bot>?start=<code>; we find their chat and return its id.
-//  3. GET ?run=<runId>&open=1,2,3&team=<chat>,<chat> → "any buttons tapped for these actions yet, and by whom?"
+//  3. GET ?run=<runId>&open=1,2,3&team=<chat>,<chat>&done=4,5&directors=<chat> → "any buttons tapped, and by whom?"
 //       Only taps from the chats listed in `team` (people whose role can decide) count.
+//       Undo taps on done actions count only from `directors`; they come back as `undos`.
 //  4. GET ?phone=<chatId> → did this chat tap "Share my number"? (so the site can show the number)
 //
 // No database: we never set a Telegram webhook, so Telegram keeps new messages and button
@@ -20,8 +22,8 @@ import { json, preflight } from '../lib/http.js';
 
 export const OPTIONS = preflight;
 
-const VERBS = { a: 'approve', h: 'hold', r: 'reject' };
-const SAID = { approve: '✅ Approved', hold: '⏸ On hold', reject: '❌ Rejected' };
+const VERBS = { a: 'approve', h: 'hold', r: 'reject', u: 'undo' };
+const SAID = { approve: '✅ Approved', hold: '⏸ On hold', reject: '❌ Rejected', undo: '↩ Undone' };
 const KEEP_SECONDS = 30 * 60; // the page listens for taps for 30 minutes, so keep updates that long
 const cut = (s, n) => (String(s).length > n ? String(s).slice(0, n - 1) + '…' : String(s));
 const rupees = n => (Math.abs(n) >= 100000 ? `₹${(n / 100000).toFixed(1)} L` : `₹${Math.round(n).toLocaleString('en-IN')}`);
@@ -94,11 +96,27 @@ export async function GET(request) {
     // Chats allowed to decide. Missing = old page version, so anyone who got buttons counts.
     const team = q.has('team') ? new Set(q.get('team').split(',').filter(Boolean)) : null;
     if (!run) return json({ decisions: {} });
-    const decisions = {};
+    const decisions = {}, undos = {};
+    const doneIds = new Set((q.get('done') || '').split(',').filter(Boolean));
+    const directors = new Set((q.get('directors') || '').split(',').filter(Boolean));
     for (const u of await updates()) {
       const cb = u.callback_query;
       const [v, r, id] = (cb?.data || '').split(':');
-      if (!VERBS[v] || r !== run || !open.has(id)) continue;
+      // ↩ Undo on an action the agents already carried out: Directors only
+      if (v === 'u' && r === run && doneIds.has(id) && !undos[id]) {
+        const by = String(cb.from?.id ?? cb.message.chat.id);
+        if (!directors.has(by) && !directors.has(String(cb.message.chat.id))) {
+          await tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Only the Director can undo actions.', show_alert: true }).catch(() => {});
+          continue;
+        }
+        undos[id] = { by: String(cb.message.chat.id), name: cb.from?.first_name || 'Director' };
+        await tg('answerCallbackQuery', { callback_query_id: cb.id, text: SAID.undo }).catch(() => {});
+        // Take the tapped Undo button off the message, so it can't be pressed twice
+        const kb = (cb.message.reply_markup?.inline_keyboard || []).map(row => row.filter(b => !b.callback_data?.startsWith(`u:${run}:`) || !undos[b.callback_data.split(':')[2]])).filter(row => row.length);
+        await tg('editMessageReplyMarkup', { chat_id: cb.message.chat.id, message_id: cb.message.message_id, reply_markup: { inline_keyboard: kb } }).catch(() => {});
+        continue;
+      }
+      if (!VERBS[v] || v === 'u' || r !== run || !open.has(id)) continue;
       const by = String(cb.from?.id ?? cb.message.chat.id);
       // Someone whose role no longer allows this (e.g. changed to Intern after the report went out)
       if (team && !team.has(by) && !team.has(String(cb.message.chat.id))) {
@@ -118,9 +136,9 @@ export async function GET(request) {
         text: `${esc(cb.message.text)}\n\n<b>${SAID[VERBS[v]]}</b>`,
       }).catch(() => {});
     }
-    return json({ decisions });
+    return json({ decisions, undos });
   } catch (e) {
-    return json({ decisions: {}, reason: why(e) });
+    return json({ decisions: {}, undos: {}, reason: why(e) });
   }
 }
 
@@ -143,14 +161,21 @@ export async function POST(request) {
     const lines = [`<b>Drishti AI · ${esc(cut(body.brand || 'Brand', 40))}</b>`];
     if (body.role) lines.push(`Your role: ${esc(cut(body.role, 60))}`);
     if (body.health) lines.push(`Health ${esc(body.health)}`);
-    if (done.length) lines.push('', `✅ <b>Done (${body.doneCount || done.length})</b>`, ...done.map(t => `• ${esc(cut(t, 120))}`));
+    // done items: { id, title } (older pages send plain text)
+    const doneText = d => (typeof d === 'string' ? d : d.title);
+    const canUndo = body.undo && done.some(d => d.id != null);
+    if (done.length) lines.push('', `✅ <b>Done (${body.doneCount || done.length})</b>${canUndo ? ', tap ↩ to undo any' : ''}`,
+      ...done.map((d, i) => `${canUndo ? `${i + 1}.` : '•'} ${esc(cut(doneText(d), 120))}`));
     if (mine.length) lines.push('', `⏳ <b>Needs you (${mine.length})</b>, tap below`);
     if (others.length) lines.push('', `👀 <b>Waiting for someone else (${others.length})</b>`,
       ...others.map(a => `• ${esc(cut(a.title, 120))}${a.impact ? ` · ${rupees(a.impact)}/day` : ''}${a.who ? ` · ${esc(cut(a.who, 40))}` : ''}`));
-    await say(chat, lines.join('\n'));
+    const run = String(body.runId || '').replace(/\W/g, '').slice(0, 24);
+    // The Director gets "↩ Undo 1", "↩ Undo 2"… under the summary, three per row
+    const undoKb = [];
+    if (canUndo) done.forEach((d, i) => { if (i % 3 === 0) undoKb.push([]); undoKb.at(-1).push({ text: `↩ Undo ${i + 1}`, callback_data: `u:${run}:${d.id}` }); });
+    await say(chat, lines.join('\n'), undoKb.length ? { reply_markup: { inline_keyboard: undoKb } } : {});
 
     // 2) one message with Approve / Hold / Reject per action
-    const run = String(body.runId || '').replace(/\W/g, '').slice(0, 24);
     for (const [i, a] of mine.entries()) {
       const head = `${i + 1}/${mine.length} · ${esc(cut(a.agent || 'Agent', 20))}${a.impact ? ` · ${rupees(a.impact)}/day` : ''}`;
       await say(chat, `<b>${head}</b>\n${esc(cut(a.title, 600))}`, {
@@ -161,7 +186,7 @@ export async function POST(request) {
         ]] },
       });
     }
-    return json({ sent: true, buttons: mine.length });
+    return json({ sent: true, buttons: mine.length + (canUndo ? done.length : 0) });
   } catch (e) {
     return json({ sent: false, reason: why(e) });
   }
