@@ -2,11 +2,14 @@
 // Telegram action reports with Approve / Hold / Reject buttons (free Telegram Bot API).
 //
 // Three jobs in one route:
-//  1. POST from the page  { chat, brand, runId, health, done: [text], waiting: [{ id, agent, title, impact }] }
-//       → sends one short summary, then one message with 3 buttons per action that needs you.
+//  1. POST from the page  { chat, brand, runId, health, role, done: [text], waiting: [{ id, agent, title, impact, act }] }
+//       → sends one short summary, then one message with 3 buttons per action this person may decide.
+//       The page sends one POST per team member. `act: false` means their role can't decide that
+//       action (e.g. an Intern, or a Manager on a move above their limit), so it is listed without buttons.
 //     POST from the page  { chat, note } → sends one short line (e.g. "Approved on the site: …").
 //  2. GET ?link=<code>  → the visitor opened t.me/<bot>?start=<code>; we find their chat and return its id.
-//  3. GET ?run=<runId>&open=1,2,3 → "any buttons tapped for these actions yet?"
+//  3. GET ?run=<runId>&open=1,2,3&team=<chat>,<chat> → "any buttons tapped for these actions yet, and by whom?"
+//       Only taps from the chats listed in `team` (people whose role can decide) count.
 //  4. GET ?phone=<chatId> → did this chat tap "Share my number"? (so the site can show the number)
 //
 // No database: we never set a Telegram webhook, so Telegram keeps new messages and button
@@ -88,13 +91,26 @@ export async function GET(request) {
     // 3) Decisions: button taps for this run's still-open actions
     const run = (q.get('run') || '').replace(/\W/g, '').slice(0, 24);
     const open = new Set((q.get('open') || '').split(',').filter(Boolean));
+    // Chats allowed to decide. Missing = old page version, so anyone who got buttons counts.
+    const team = q.has('team') ? new Set(q.get('team').split(',').filter(Boolean)) : null;
     if (!run) return json({ decisions: {} });
     const decisions = {};
     for (const u of await updates()) {
       const cb = u.callback_query;
       const [v, r, id] = (cb?.data || '').split(':');
       if (!VERBS[v] || r !== run || !open.has(id)) continue;
-      decisions[id] = VERBS[v]; // a later tap on the same action wins
+      const by = String(cb.from?.id ?? cb.message.chat.id);
+      // Someone whose role no longer allows this (e.g. changed to Intern after the report went out)
+      if (team && !team.has(by) && !team.has(String(cb.message.chat.id))) {
+        await tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Your role on this team can only view this action.', show_alert: true }).catch(() => {});
+        continue;
+      }
+      // Approve / Reject are final: the first one wins. Hold can still be followed by a final decision.
+      if (decisions[id] && decisions[id].act !== 'hold') {
+        await tg('answerCallbackQuery', { callback_query_id: cb.id, text: `Already decided by ${decisions[id].name}.` }).catch(() => {});
+        continue;
+      }
+      decisions[id] = { act: VERBS[v], by: String(cb.message.chat.id), name: cb.from?.first_name || 'Someone' };
       // Stop the button's spinner and show the decision under the message (only works once; errors ignored)
       await tg('answerCallbackQuery', { callback_query_id: cb.id, text: SAID[VERBS[v]] }).catch(() => {});
       await tg('editMessageText', {
@@ -122,16 +138,21 @@ export async function POST(request) {
 
     const done = (body.done || []).slice(0, 8), waiting = (body.waiting || []).slice(0, 8);
     // 1) the crisp summary
+    // Actions this person may decide get buttons; the rest are only listed (for their information)
+    const mine = waiting.filter(a => a.act !== false), others = waiting.filter(a => a.act === false);
     const lines = [`<b>Drishti AI · ${esc(cut(body.brand || 'Brand', 40))}</b>`];
+    if (body.role) lines.push(`Your role: ${esc(cut(body.role, 60))}`);
     if (body.health) lines.push(`Health ${esc(body.health)}`);
     if (done.length) lines.push('', `✅ <b>Done (${body.doneCount || done.length})</b>`, ...done.map(t => `• ${esc(cut(t, 120))}`));
-    if (waiting.length) lines.push('', `⏳ <b>Needs you (${waiting.length})</b>, tap below`);
+    if (mine.length) lines.push('', `⏳ <b>Needs you (${mine.length})</b>, tap below`);
+    if (others.length) lines.push('', `👀 <b>Waiting for someone else (${others.length})</b>`,
+      ...others.map(a => `• ${esc(cut(a.title, 120))}${a.impact ? ` · ${rupees(a.impact)}/day` : ''}${a.who ? ` · ${esc(cut(a.who, 40))}` : ''}`));
     await say(chat, lines.join('\n'));
 
     // 2) one message with Approve / Hold / Reject per action
     const run = String(body.runId || '').replace(/\W/g, '').slice(0, 24);
-    for (const [i, a] of waiting.entries()) {
-      const head = `${i + 1}/${waiting.length} · ${esc(cut(a.agent || 'Agent', 20))}${a.impact ? ` · ${rupees(a.impact)}/day` : ''}`;
+    for (const [i, a] of mine.entries()) {
+      const head = `${i + 1}/${mine.length} · ${esc(cut(a.agent || 'Agent', 20))}${a.impact ? ` · ${rupees(a.impact)}/day` : ''}`;
       await say(chat, `<b>${head}</b>\n${esc(cut(a.title, 600))}`, {
         reply_markup: { inline_keyboard: [[
           { text: '✅ Approve', callback_data: `a:${run}:${a.id}` },
@@ -140,7 +161,7 @@ export async function POST(request) {
         ]] },
       });
     }
-    return json({ sent: true, buttons: waiting.length });
+    return json({ sent: true, buttons: mine.length });
   } catch (e) {
     return json({ sent: false, reason: why(e) });
   }

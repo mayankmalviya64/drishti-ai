@@ -6,7 +6,7 @@
 //   ④ Action taken     → the agent carries it out (small moves) or waits for Approve (big ones),
 //                         an action report is emailed, and the changed data flows back into ①.
 // Hovering anything shows what is flowing through it (one shared hover card, see TIPS).
-import { makeSample, toCSV } from './lib/sample.js';
+import { makeSample, toCSV, BRANDS } from './lib/sample.js';
 import { cleanRows, cleanOrders, cleanCompetitors, EVENTS } from './lib/analyze.js';
 import { RULE_TYPES, DEFAULT_RULES, cleanRule, ruleText } from './lib/rules.js';
 import { SCENARIOS, scenariosFor, applyScenario, scenarioContext } from './lib/scenarios.js';
@@ -210,7 +210,7 @@ document.addEventListener('click', e => {
 // in from the right. Only one is open at a time; the dark scrim behind closes it.
 // On phones the sidebar slides in from the left the same way.
 // ---------------------------------------------------------------------------
-const SHEETS = ['#rulesPanel', '#ownData', '#aboutPanel', '#agentsPanel', '#drawer', '#whatIf'];
+const SHEETS = ['#rulesPanel', '#ownData', '#aboutPanel', '#agentsPanel', '#drawer', '#whatIf', '#teamPanel'];
 function openSheet(sel) {
   closeSheets(sel);
   const el = $(sel);
@@ -534,17 +534,54 @@ $$('.via [role=switch]').forEach(b => b.onclick = () => {
 });
 setChannels((store.get('drishti-channels') ?? 'email').split(',').filter(Boolean));
 
-// Telegram linking. The visitor taps "Connect Telegram", the bot opens with a one-time code,
-// they press Start, and our server spots that code and hands back their chat id.
-// The chat id is remembered on this device only.
+// ---------------------------------------------------------------------------
+// TELEGRAM TEAM: reports can go to several people, each with a role.
+//   Intern      → gets every report, for information only (no buttons)
+//   Manager     → can Approve / Hold / Reject moves up to a ₹/day limit you set
+//   Sr Manager  → can decide every move, any size
+// Each person also has a brand: "All brands", or only one brand's reports.
+// Adding someone: pick role + brand, then send them the invite link. When they press
+// Start in the Drishti bot, our server spots the one-time code and hands back their chat id.
+// The team is remembered on this device only (localStorage "drishti-team").
+// ---------------------------------------------------------------------------
 const TG_BOT = 'drishti_phoenix_bot';
-const tgChat = () => JSON.parse(store.get('drishti-tg') || 'null');
-// Shows the linked number (if they shared it in Telegram), otherwise their Telegram name
+const ROLES = {
+  intern:    { label: 'Intern',     can: 'Gets reports only' },
+  manager:   { label: 'Manager',    can: 'Decides moves up to the limit below' },
+  srmanager: { label: 'Sr Manager', can: 'Decides every move' },
+};
+const ALL_BRANDS = 'all';
+const brandNames = () => [...new Set([...Object.values(BRANDS).map(b => b.name), state.data?.brand].filter(Boolean))];
+
+function loadTeam() {
+  try { const t = JSON.parse(store.get('drishti-team') || 'null'); if (Array.isArray(t)) return t; } catch {}
+  // Older visits linked just one chat ("drishti-tg"); that person becomes the first Sr Manager
+  try { const one = JSON.parse(store.get('drishti-tg') || 'null'); if (one?.chat) return [{ ...one, role: 'srmanager', brand: ALL_BRANDS }]; } catch {}
+  return [];
+}
+state.team = loadTeam();
+state.invites = [];  // invite links sent out but not yet accepted: { code, role, brand, until }
+const saveTeam = () => { store.set('drishti-team', JSON.stringify(state.team)); showTg(); renderTeam(); };
+const managerLimit = () => Math.max(0, Number(store.get('drishti-mgr-limit')) || 25000);
+
+// Who gets this brand's reports, and can this person decide this action?
+const teamFor = brand => state.team.filter(m => m.brand === ALL_BRANDS || m.brand === brand);
+function canDecide(m, a) {
+  if (m.role === 'srmanager') return true;
+  if (m.role === 'manager') return (Number(a.impact) || 0) <= managerLimit();
+  return false; // intern: inform only
+}
+// Short label for whoever CAN decide an action, shown to the people who can't
+const whoDecides = a => ((Number(a.impact) || 0) <= managerLimit() ? 'Manager or Sr Manager' : 'Sr Manager');
+const roleLabel = m => ROLES[m.role]?.label || 'Intern';
+
+// Sidebar line: one person's number/name, or "3 people"
 function showTg() {
-  const t = tgChat();
-  $('#tgText').textContent = t ? (t.phone ? prettyPhone(t.phone) : t.name) : 'Connect Telegram';
-  $('#tgLink').title = t ? `Linked to ${t.name}${t.phone ? ` (${prettyPhone(t.phone)})` : ''}. Click to link again.` : 'Open the Drishti bot in Telegram';
-  $('#tgLink').classList.toggle('linked', !!t);
+  const t = state.team;
+  $('#tgText').textContent = !t.length ? 'Add people on Telegram'
+    : t.length === 1 ? `${t[0].phone ? prettyPhone(t[0].phone) : t[0].name} · ${roleLabel(t[0])}` : `${t.length} people on Telegram`;
+  $('#tgLink').title = t.length ? t.map(m => `${m.name} · ${roleLabel(m)}`).join('\n') : 'Invite yourself or your team to the Drishti bot';
+  $('#tgLink').classList.toggle('linked', t.length > 0);
 }
 // "+919009601598" → "+91 90096 01598"
 function prettyPhone(p) {
@@ -554,37 +591,80 @@ function prettyPhone(p) {
 // After linking, the bot offers a "Share my number" button; listen for it for 2 minutes
 function waitForPhone(chat) {
   const until = Date.now() + 2 * 60 * 1000;
-  clearInterval(state.tgPhonePoll);
-  state.tgPhonePoll = setInterval(async () => {
-    if (Date.now() > until) return clearInterval(state.tgPhonePoll);
+  const poll = setInterval(async () => {
+    if (Date.now() > until) return clearInterval(poll);
     try {
       const j = await (await fetch(`${API}/api/telegram?phone=${chat}`)).json();
       if (!j.phone) return;
-      clearInterval(state.tgPhonePoll);
-      store.set('drishti-tg', JSON.stringify({ ...tgChat(), phone: j.phone }));
-      showTg();
+      clearInterval(poll);
+      const m = state.team.find(x => x.chat === chat);
+      if (m) { m.phone = j.phone; saveTeam(); }
     } catch {}
   }, 3000);
 }
-$('#tgLink').onclick = () => {
-  const code = Math.random().toString(36).slice(2, 10);
-  window.open(`https://t.me/${TG_BOT}?start=${code}`, '_blank', 'noopener');
-  $('#tgText').textContent = 'Press Start in Telegram…';
+
+// The team panel: everyone linked (role + brand editable), invites waiting, and "Invite someone"
+function renderTeam() {
+  const brandOpts = sel => [`<option value="${ALL_BRANDS}"${sel === ALL_BRANDS ? ' selected' : ''}>All brands</option>`,
+    ...brandNames().map(b => `<option${b === sel ? ' selected' : ''}>${esc(b)}</option>`)].join('');
+  const roleOpts = sel => Object.entries(ROLES).map(([k, r]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${r.label}</option>`).join('');
+  $('#teamList').innerHTML = state.team.length
+    ? state.team.map((m, i) => `<li><span class="tm-name"><b>${esc(m.name)}</b>${m.phone ? `<small>${esc(prettyPhone(m.phone))}</small>` : ''}</span>
+        <select class="field small" data-i="${i}" data-k="role" aria-label="Role of ${esc(m.name)}">${roleOpts(m.role)}</select>
+        <select class="field small" data-i="${i}" data-k="brand" aria-label="Brand for ${esc(m.name)}">${brandOpts(m.brand)}</select>
+        <button class="mini" type="button" data-del="${i}" aria-label="Remove ${esc(m.name)}">✕</button></li>`).join('')
+    : '<li class="none">No one yet. Invite yourself first, then your team.</li>';
+  $$('#teamList select').forEach(s => s.onchange = () => { state.team[Number(s.dataset.i)][s.dataset.k] = s.value; saveTeam(); });
+  $$('#teamList [data-del]').forEach(b => b.onclick = () => { state.team.splice(Number(b.dataset.del), 1); saveTeam(); });
+  // Invites still waiting for the person to press Start
+  $('#inviteList').innerHTML = state.invites.map(v => {
+    const url = `https://t.me/${TG_BOT}?start=${v.code}`;
+    return `<li><span class="tm-name"><b>Invite · ${ROLES[v.role].label}</b><small>${esc(v.brand === ALL_BRANDS ? 'All brands' : v.brand)} · waiting for Start</small></span>
+      <input class="field small" readonly value="${url}" aria-label="Invite link" onclick="this.select()">
+      <button class="btn ghost small" type="button" data-copy="${url}">Copy</button>
+      <a class="btn ghost small" href="${url}" target="_blank" rel="noopener">Open</a></li>`;
+  }).join('');
+  $$('#inviteList [data-copy]').forEach(b => b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy).then(() => { b.textContent = 'Copied'; }));
+  if (!$('#invRole').options.length) $('#invRole').innerHTML = roleOpts('srmanager');
+  const keep = $('#invBrand').value || ALL_BRANDS;
+  $('#invBrand').innerHTML = brandOpts(keep);
+  $('#roleHelp').innerHTML = Object.values(ROLES).map(r => `<li><b>${r.label}:</b> ${esc(r.can)}</li>`).join('');
+}
+
+// One invite = one one-time code. We keep checking every code that is still waiting (10 minutes each).
+function invite() {
+  const v = { code: Math.random().toString(36).slice(2, 10), role: $('#invRole').value, brand: $('#invBrand').value, until: Date.now() + 10 * 60 * 1000 };
+  state.invites.push(v);
+  renderTeam();
   clearInterval(state.tgLinkPoll);
-  const until = Date.now() + 3 * 60 * 1000; // listen for 3 minutes
   state.tgLinkPoll = setInterval(async () => {
-    if (Date.now() > until) { clearInterval(state.tgLinkPoll); return showTg(); }
-    try {
-      const j = await (await fetch(`${API}/api/telegram?link=${code}`)).json();
-      if (!j.linked) return;
-      clearInterval(state.tgLinkPoll);
-      store.set('drishti-tg', JSON.stringify({ chat: j.chat, name: j.name }));
-      showTg();
-      log(`Telegram linked for ${j.name}`);
-      waitForPhone(j.chat);
-    } catch {}
+    state.invites = state.invites.filter(x => Date.now() < x.until);
+    if (!state.invites.length) { clearInterval(state.tgLinkPoll); return renderTeam(); }
+    for (const x of [...state.invites]) {
+      try {
+        const j = await (await fetch(`${API}/api/telegram?link=${x.code}`)).json();
+        if (!j.linked) continue;
+        state.invites = state.invites.filter(y => y !== x);
+        // Same Telegram chat linked again → update their role instead of adding them twice
+        const old = state.team.find(m => m.chat === j.chat);
+        if (old) Object.assign(old, { name: j.name, role: x.role, brand: x.brand }); else state.team.push({ chat: j.chat, name: j.name, role: x.role, brand: x.brand });
+        saveTeam();
+        log(`Telegram linked for ${j.name} as ${ROLES[x.role].label}`);
+        const m = state.team.find(y => y.chat === j.chat);
+        const what = m.role === 'srmanager' ? 'You can approve, hold or reject every move.'
+          : m.role === 'manager' ? `You can approve, hold or reject moves up to ${inr(managerLimit())}/day. Bigger ones go to a Sr Manager.`
+          : 'You will get every report for your information.';
+        sendTgNote(m.chat, `👋 You are on the Drishti team as ${ROLES[m.role].label} for ${m.brand === ALL_BRANDS ? 'all brands' : m.brand}. ${what}`);
+        waitForPhone(j.chat);
+      } catch {}
+    }
   }, 3000);
-};
+}
+
+$('#tgLink').onclick = () => { renderTeam(); openSheet('#teamPanel'); };
+$('#invite').onclick = invite;
+$('#mgrLimit').value = managerLimit();
+$('#mgrLimit').onchange = e => { store.set('drishti-mgr-limit', String(Math.max(0, Number(e.target.value) || 0))); e.target.value = managerLimit(); };
 showTg();
 
 // ---------------------------------------------------------------------------
@@ -1071,11 +1151,12 @@ async function run() {
   setFlowing(true);
   await wait(900);
 
-  const queue = []; let finished = false;
+  const queue = []; let finished = false, gotResult = false;
   // Reader: pulls lines off the network stream into a queue
   const reader = (async () => {
+    let body; // what the agents get (also reused by the in-browser safety net below)
     try {
-      const body = { brand: state.data.brand, category: state.data.category, rows: state.data.rows, orders: state.data.orders,
+      body = { brand: state.data.brand, category: state.data.category, rows: state.data.rows, orders: state.data.orders,
         competitors: state.data.competitors || [], breakevenRoas: Number($('#breakeven').value) || 2,
         rules: state.rules, model: $('#modelPick').value || undefined,
         scenario: state.data.source === 'Sample' ? scenarioContext(state.data.scenario) : null };
@@ -1095,13 +1176,34 @@ async function run() {
       } finally { clearTimeout(timer); }
       if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw new Error(j.error || 'Server error ' + res.status); }
       const rd = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
-      for (;;) {
-        const { value, done } = await rd.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        let i; while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (line) queue.push(JSON.parse(line)); }
+      // Watchdog: if the server goes quiet for 25 seconds mid-run, stop waiting and finish here
+      let stall;
+      const quiet = () => new Promise((_, no) => { clearTimeout(stall); stall = setTimeout(() => no(new Error('stalled')), 25000); });
+      try {
+        for (;;) {
+          const { value, done } = await Promise.race([rd.read(), quiet()]);
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let i; while ((i = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+            if (!line) continue;
+            const ev = JSON.parse(line);
+            if (ev.type === 'error') throw new Error(ev.message); // handled below: finish in the browser
+            if (ev.type === 'result') gotResult = true;
+            queue.push(ev);
+          }
+        }
+      } finally { clearTimeout(stall); rd.cancel().catch(() => {}); }
+      if (!gotResult) throw new Error('the server stopped before the agents finished');
+    } catch (e) {
+      // SAFETY NET: whatever went wrong on the server, finish the run right here so the
+      // screen never ends up empty. Reports (email / Telegram) still go out after it.
+      if (!gotResult) {
+        queue.push({ type: 'thought', text: 'The server hit a snag, so the agents are finishing right here in your browser (built-in rules engine, same maths).' });
+        try { const { runDrishti } = await import('./lib/agent.js'); await runDrishti({ ...body, model: 'rules' }, ev => queue.push(ev)); }
+        catch (e2) { queue.push({ type: 'error', message: e2.message + ' Check your connection and try again.' }); }
       }
-    } catch (e) { queue.push({ type: 'error', message: e.message + ' Check your connection and try again.' }); }
+    }
     finally { finished = true; }
   })();
   // Player: shows queued events at a human pace
@@ -1317,13 +1419,19 @@ async function feedBack(a, line) {
 
 // Approve / Hold / Reject (big moves) and Undo (small ones).
 // `from` is 'telegram' when the tap came from the Telegram buttons, so we don't message back twice.
-async function decide(id, act, from) {
+// `by` = who tapped on Telegram ({ chat, name, role }); the rest of the team is told who decided.
+async function decide(id, act, from, by) {
   const a = state.result.actions.find(x => x.id === id); if (!a) return;
-  const via = from === 'telegram' ? ' on Telegram' : '';
+  const who = by ? `${by.name}${by.role ? ` (${by.role})` : ''}` : '';
+  const via = from === 'telegram' ? (who ? ` on Telegram, by ${who}` : ' on Telegram') : '';
+  if (by) a.decidedBy = who;
+  // Tell everyone else on the team what was decided on Telegram and by whom
+  const tellTeam = text => { if (from === 'telegram' && who) telegramNote(`${text} by ${who}: ${a.title}`, by.chat); };
   if (act === 'hold') {
     a.held = true; updateRow(a);
     log(`You put "${a.title}" on hold${via}`);
     if (!from) telegramNote(`⏸ On hold (set on the site): ${a.title}`);
+    tellTeam('⏸ Put on hold');
     return;
   }
   if (act === 'approve') {
@@ -1335,10 +1443,12 @@ async function decide(id, act, from) {
     feedBack(a);
     if (sendsTo('email')) emailReport([a], []);
     if (!from) telegramNote(`✅ Approved on the site: ${a.feedback || a.title}`);
+    tellTeam('✅ Approved');
   } else if (act === 'reject') {
     a.state = 'rejected'; updateRow(a);
     log(`You rejected "${a.title}"${via}`);
     if (!from) telegramNote(`❌ Rejected on the site: ${a.title}`);
+    tellTeam('❌ Rejected');
   } else if (act === 'undo') {
     a.state = 'undone'; updateRow(a);
     log(`You rolled back "${a.title}"`);
@@ -1360,60 +1470,83 @@ function sendReport(done, waiting) {
   return Promise.all([sendsTo('email') && emailReport(done, waiting), sendsTo('telegram') && telegramReport(done, waiting)]);
 }
 
-// Telegram: one crisp summary, then Approve / Hold / Reject buttons for each action that needs you.
+// Telegram: every team member for this brand gets one crisp summary. Actions their role may
+// decide come with Approve / Hold / Reject buttons; the rest are listed for information.
 // The taps come back through our server; the page checks for them every few seconds.
 const TG_WHY = {
   'not-configured': 'Telegram is not set up on the server yet',
-  'not-linked': 'tap "Connect Telegram" in the sidebar first',
-  'blocked': 'the Drishti bot was stopped in Telegram; connect it again',
+  'not-linked': 'add people in the Telegram team panel first',
+  'blocked': 'the Drishti bot was stopped in Telegram; invite them again',
 };
 async function telegramReport(done, waiting) {
   if (!done.length && !waiting.length) return;
-  const mark = status => { for (const a of done) { state.tg[a.id] = status; updateRow(a); } };
-  const t = tgChat();
-  if (!t) return mark({ ok: false, text: TG_WHY['not-linked'] });
+  const all = [...done, ...waiting];
+  const mark = status => { for (const a of all) { state.tg[a.id] = status; updateRow(a); } };
+  const r = state.result, people = teamFor(r.brand);
+  if (!people.length) return mark({ ok: false, text: state.team.length ? `no one on the Telegram team covers ${r.brand}` : TG_WHY['not-linked'] });
   if (state.offline) return mark({ ok: false, text: 'Telegram needs our server, which this network cannot reach' });
   mark({ ok: false, text: 'sending to Telegram…' });
-  const r = state.result;
-  let j = {};
-  try {
-    const res = await fetch(API + '/api/telegram', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(20000),
-      body: JSON.stringify({
-        chat: t.chat, brand: r.brand, runId: state.runId,
-        health: `${r.ahi.before.value} → ${r.ahi.after.value}`,
-        done: done.map(a => a.feedback || a.title), doneCount: done.length,
-        waiting: waiting.map(a => ({ id: a.id, agent: agentName(a.agent), title: a.recommend || a.title, impact: a.impact })),
-      }),
-    });
-    j = await res.json();
-  } catch { j = { reason: 'Telegram service unreachable' }; }
-  const status = j.sent ? { ok: true, text: 'report sent on Telegram' } : { ok: false, text: TG_WHY[j.reason] || j.error || j.reason || 'Telegram not sent' };
-  mark(status);
-  log(status.ok ? `Action report sent on Telegram${j.buttons ? ` with ${j.buttons} approval button${j.buttons === 1 ? '' : 's'}` : ''}` : `Telegram: ${status.text}`);
-  if (j.sent && j.buttons) pollTelegram();
+  // One message set per person, all at the same time
+  const results = await Promise.all(people.map(async m => {
+    try {
+      const res = await fetch(API + '/api/telegram', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(20000),
+        body: JSON.stringify({
+          chat: m.chat, brand: r.brand, runId: state.runId, role: roleLabel(m),
+          health: `${r.ahi.before.value} → ${r.ahi.after.value}`,
+          done: done.map(a => a.feedback || a.title), doneCount: done.length,
+          waiting: waiting.map(a => ({ id: a.id, agent: agentName(a.agent), title: a.recommend || a.title, impact: a.impact, act: canDecide(m, a), who: whoDecides(a) })),
+        }),
+      });
+      return { m, j: await res.json() };
+    } catch { return { m, j: { reason: 'Telegram service unreachable' } }; }
+  }));
+  const ok = results.filter(x => x.j.sent), bad = results.filter(x => !x.j.sent);
+  for (const x of bad) log(`Telegram to ${x.m.name}: ${TG_WHY[x.j.reason] || x.j.error || x.j.reason || 'not sent'}`);
+  if (ok.length) log(`Action report sent on Telegram to ${ok.map(x => `${x.m.name} (${roleLabel(x.m)})`).join(', ')}`);
+  // Each action's line says how many got it, and warns when nobody on Telegram may decide it
+  for (const a of all) {
+    const deciders = ok.filter(x => canDecide(x.m, a)).length;
+    state.tg[a.id] = !ok.length ? { ok: false, text: TG_WHY[bad[0]?.j.reason] || bad[0]?.j.error || bad[0]?.j.reason || 'Telegram not sent' }
+      : { ok: true, text: `sent on Telegram to ${ok.length} ${ok.length === 1 ? 'person' : 'people'}`
+          + (a.state === 'waiting' ? (deciders ? `, ${deciders} can decide` : `; no one there can decide it (needs a ${whoDecides(a)}), so decide here`) : '') };
+    updateRow(a);
+  }
+  if (ok.some(x => x.j.buttons)) pollTelegram();
 }
 
-// Short one-line Telegram message (decisions made on the site); silent if Telegram isn't in use
-function telegramNote(note) {
-  const t = tgChat();
-  if (!sendsTo('telegram') || !t || state.offline) return;
-  fetch(API + '/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat: t.chat, note }) }).catch(() => {});
+// Short one-line Telegram message to one chat
+function sendTgNote(chat, note) {
+  fetch(API + '/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat, note }) }).catch(() => {});
+}
+// The same line to everyone on this brand's Telegram team (except `skip`, e.g. the person who tapped)
+function telegramNote(note, skip) {
+  if (!sendsTo('telegram') || state.offline || !state.result) return;
+  for (const m of teamFor(state.result.brand)) if (m.chat !== skip) sendTgNote(m.chat, note);
 }
 
-// Every 4 seconds (for up to 30 minutes), ask the server whether any Telegram button was tapped
+// Every 4 seconds (for up to 30 minutes), ask the server whether any Telegram button was tapped.
+// We tell the server who may decide, and double-check each tap against that person's role here too.
 function pollTelegram() {
   clearInterval(state.tgPoll);
   const run = state.runId, until = Date.now() + 30 * 60 * 1000;
   state.tgPoll = setInterval(async () => {
     const open = state.result?.actions.filter(a => a.state === 'waiting') || [];
     if (run !== state.runId || !open.length || Date.now() > until) return clearInterval(state.tgPoll);
+    const deciders = teamFor(state.result.brand).filter(m => m.role !== 'intern').map(m => m.chat);
     try {
-      const { decisions = {} } = await (await fetch(`${API}/api/telegram?run=${run}&open=${open.map(a => a.id).join(',')}`)).json();
+      const { decisions = {} } = await (await fetch(`${API}/api/telegram?run=${run}&open=${open.map(a => a.id).join(',')}&team=${deciders.join(',')}`)).json();
       for (const a of open) {
-        const d = decisions[a.id];
-        if (d === 'approve' || d === 'reject') decide(a.id, d, 'telegram');
-        else if (d === 'hold' && !a.held) decide(a.id, 'hold', 'telegram');
+        const d = typeof decisions[a.id] === 'string' ? { act: decisions[a.id] } : decisions[a.id];
+        if (!d) continue;
+        const m = state.team.find(x => x.chat === d.by);
+        if (m && !canDecide(m, a)) {   // e.g. a Manager tapping a move above their limit
+          if (!a.refused?.[m.chat]) { (a.refused ||= {})[m.chat] = 1; sendTgNote(m.chat, `🔒 "${a.title}" needs a ${whoDecides(a)}. Your tap was not applied.`); }
+          continue;
+        }
+        const by = m ? { chat: m.chat, name: m.name, role: roleLabel(m) } : d.name ? { chat: d.by, name: d.name } : null;
+        if (d.act === 'approve' || d.act === 'reject') decide(a.id, d.act, 'telegram', by);
+        else if (d.act === 'hold' && !a.held) decide(a.id, 'hold', 'telegram', by);
       }
     } catch {}
   }, 4000);
@@ -1605,7 +1738,8 @@ const TIPS = {
       <div class="k">On a connected account</div><p>${esc(apiCall(a))}${sample ? ' <i>(sample brand: applied to the sample data)</i>' : ''}</p>
       <div class="k">Fed back into ①</div><p class="new">↺ ${esc(a.feedback || a.title)}</p>
       ${state.mail[a.id] ? `<div class="k">Email report</div><p>${state.mail[a.id].href ? `<a href="${esc(state.mail[a.id].href)}">${esc(state.mail[a.id].text)}</a>` : esc(state.mail[a.id].text)}</p>` : ''}
-      ${state.tg[a.id] ? `<div class="k">Telegram report</div><p>${esc(state.tg[a.id].text)}</p>` : ''}`;
+      ${state.tg[a.id] ? `<div class="k">Telegram report</div><p>${esc(state.tg[a.id].text)}</p>` : ''}
+      ${a.decidedBy ? `<div class="k">Decided on Telegram by</div><p>${esc(a.decidedBy)}</p>` : ''}`;
   },
   ahi() {
     const r = state.result; if (!r) return '';
@@ -1647,7 +1781,7 @@ const TIPS = {
   watch() {
     return `<h4>Always watching</h4><p>Between full checks the Orchestrator keeps reading the streams in ① and your rules. A full check (Run) re-reads everything, diagnoses, recommends and acts.</p><p style="color:var(--muted)">${nIN(rowsSeen)} rows read since you opened this page.</p>`;
   },
-  email() { return `<h4>${ic('chat')} Get the action reports yourself</h4><p><b>Email (on by default):</b> type your address and every run emails you what the agents did.</p><p><b>Telegram (switch it on):</b> tap <b>Connect Telegram</b> and press <b>Start</b> in the Drishti bot. After each run you get one short summary, and every action that needs you arrives with <b>Approve</b>, <b>Hold</b> and <b>Reject</b> buttons. Tap one and the card here updates within seconds.</p><p>With both switched on, every report goes to both.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">If you get a one-time “Activate” email, click it and run the loop again. If email services are down, the card shows a link that opens the report in your own email app.</p>`; },
+  email() { return `<h4>${ic('chat')} Get the action reports yourself</h4><p><b>Email (on by default):</b> type your address and every run emails you what the agents did.</p><p><b>Telegram (switch it on):</b> click the Telegram line to open your <b>Telegram team</b>. Invite yourself and your colleagues, each with a role and a brand. <b>Interns</b> get reports only. <b>Managers</b> get Approve, Hold and Reject buttons for moves up to their ₹/day limit. <b>Sr Managers</b> get buttons for every move. Tap one and the card here updates within seconds, and the rest of the team is told who decided.</p><p>With both switched on, every report goes to both.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">If you get a one-time “Activate” email, click it and run the loop again. If email services are down, the card shows a link that opens the report in your own email app.</p>`; },
   // one line of the agents' feed, in full
   ev(el) {
     const a = agent(el.dataset.agent);
@@ -1805,7 +1939,7 @@ async function ask(ev) {
       budget: { shifts: r.budget?.shifts, upcomingEvents: r.budget?.upcomingEvents }, shock: { external: r.shock?.external, checks: r.shock?.checks },
       reportsSentTo: [sendsTo('email') && 'email', sendsTo('telegram') && 'Telegram'].filter(Boolean) };
     const res = await fetch(API + '/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q, context }), signal: AbortSignal.timeout(30000) });
+      body: JSON.stringify({ question: q, context, model: $('#modelPick').value || undefined }), signal: AbortSignal.timeout(30000) });
     const j = await res.json();
     out.textContent = j.answer || j.error || 'No answer came back. Please try again.';
     trackAI(j.usage, 'ask');
