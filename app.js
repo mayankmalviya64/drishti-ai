@@ -275,6 +275,7 @@ function setData(d) {
   for (const k of Object.keys(counts)) delete counts[k];
   setStatus(describe(state.data));
   renderSources();
+  resetLoop();
 }
 
 // Summarise loaded data in one line, e.g. "490 rows · 14 days · Facebook, Google · Shopify orders ✓"
@@ -551,7 +552,9 @@ function loadRules() {
   try { saved = JSON.parse(store.get('drishti-rules') || 'null'); } catch {}
   // Older visits saved only the flat-revenue days; turn that into the first rule.
   const oldDays = store.get('drishti-flat-days');
-  const list = Array.isArray(saved) ? saved : oldDays ? [{ type: 'flat', a: Number(oldDays) }] : DEFAULT_RULES;
+  // Visitors who never touched the old single default rule get the new set of defaults.
+  const untouchedOldDefault = Array.isArray(saved) && saved.length === 1 && saved[0].type === 'flat' && Number(saved[0].a) === 2;
+  const list = Array.isArray(saved) && !untouchedOldDefault ? saved : oldDays && !saved ? [{ type: 'flat', a: Number(oldDays) }] : DEFAULT_RULES;
   state.rules = list.map(cleanRule).filter(Boolean);
 }
 function saveRules() { store.set('drishti-rules', JSON.stringify(state.rules)); renderRuleSum(); }
@@ -918,6 +921,8 @@ async function run() {
   clearInterval(state.tgPoll);
   const btn = $('#runBtn');
   btn.disabled = true; btn.classList.remove('idle'); btn.innerHTML = 'Agent running…';
+  // No switching brand or twist mid-run (the results would belong to the old data)
+  $$('input[name=brand], #twistPixel, #twistShock').forEach(el => el.disabled = true);
   state.result = null;   // so the boxes start from step ① again
   $('#feed').innerHTML = '';
   renderStrip();
@@ -970,10 +975,41 @@ async function run() {
   setFlowing(false);
   state.running = false;
   btn.disabled = false; btn.innerHTML = `${ic('loop')}Run again`;
+  $$('input[name=brand], #twistPixel, #twistShock').forEach(el => el.disabled = false);
   hubIdle();
   watchLine('<b>Back to watching</b> · the next full check re-reads everything the agents just changed');
 }
 $('#runBtn').onclick = run;
+
+// What ② and ③/④ look like before any run (saved once, so we can go back to it)
+const EMPTY = { feed: $('#feed').innerHTML, rows: $('#rows').innerHTML };
+
+// New data (another brand, a twist, your own file) means the last run's results
+// belong to different numbers. Clear them and ask for a fresh run on the new data.
+function resetLoop() {
+  if (!state.result) return runLabel();
+  state.result = null; state.loop = 0;
+  state.agentLog = {}; state.mail = {}; state.tg = {};
+  clearInterval(state.tgPoll);
+  $('#feed').innerHTML = EMPTY.feed;
+  $('#rows').innerHTML = EMPTY.rows;
+  $('#actCount').textContent = ''; $('#statusPill').textContent = ''; $('#statusPill').className = 'pill';
+  $('#results').hidden = true; $('#details').hidden = true;
+  $('#askAnswer').textContent = '';
+  renderStrip();
+  hubIdle();
+  runLabel();
+  log(`Switched to ${state.data.brand}. Press Run to start the agents on it.`);
+}
+
+// The Run button says which brand it will run on, e.g. "Run for Crunchkart"
+function runLabel() {
+  const btn = $('#runBtn');
+  if (state.running || !btn) return;
+  const name = state.data?.brand ? String(state.data.brand).split(/\s+/)[0] : '';
+  btn.innerHTML = state.result ? `${ic('loop')}Run again` : `${ic('play')}Run ${name ? `for ${esc(name)}` : 'the agent'}`;
+  btn.classList.toggle('idle', !state.result);
+}
 
 // Fallback: when the server can't be reached, run the same agents in this browser.
 // It uses the built-in rules engine (AI keys only live on the server), so the loop
@@ -1555,19 +1591,32 @@ function renderDetails(r) {
   log(`Run finished · ${r.engine}`);
 }
 
-// Ask a follow-up question about this run
+// Ask a follow-up question about this run.
+// Every path ends with a visible message, so the box never just stays silent.
 async function ask(ev) {
   ev?.preventDefault();
-  const q = $('#askInput').value.trim(); if (!q || !state.result) return;
+  const out = $('#askAnswer'), btn = $('#askForm button');
+  const q = $('#askInput').value.trim();
+  if (!q) { $('#askInput').focus(); return; }
+  if (state.running) { out.textContent = 'The agents are still running. Ask again once the run finishes.'; return; }
+  if (!state.result) { out.textContent = 'Press Run first. The agent answers questions about its latest run.'; return; }
+  if (state.offline) { out.textContent = 'Questions need our server, which this network cannot reach right now. Try another network or mobile data.'; return; }
   const r = state.result;
-  $('#askAnswer').innerHTML = '<span class="typing">Thinking</span>';
-  const context = { brand: r.brand, briefing: r.briefing, impact: r.impact, ahi: r.ahi, actions: r.actions.map(({ agent, title, detail, tier, state: s }) => ({ agent, title, detail, tier, decision: s })),
-    channels: r.signal.perChannel, fatigue: r.fatigue.ads.slice(0, 5), losingCohorts: r.cohort.losing.slice(0, 5), budget: { shifts: r.budget.shifts, upcomingEvents: r.budget.upcomingEvents }, shock: { external: r.shock?.external, checks: r.shock?.checks } };
+  out.innerHTML = '<span class="typing">Thinking</span>';
+  btn.disabled = true;
   try {
-    const res = await fetch(API + '/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q, context }) });
+    const context = { brand: r.brand, briefing: r.briefing, impact: r.impact, ahi: r.ahi,
+      actions: r.actions.map(({ agent, title, detail, tier, state: s, held }) => ({ agent, title, detail, tier, decision: held && s === 'waiting' ? 'on hold' : s })),
+      channels: r.signal?.perChannel, fatigue: r.fatigue?.ads?.slice(0, 5), losingCohorts: r.cohort?.losing?.slice(0, 5),
+      budget: { shifts: r.budget?.shifts, upcomingEvents: r.budget?.upcomingEvents }, shock: { external: r.shock?.external, checks: r.shock?.checks },
+      reportsSentTo: [sendsTo('email') && 'email', sendsTo('telegram') && 'Telegram'].filter(Boolean) };
+    const res = await fetch(API + '/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q, context }), signal: AbortSignal.timeout(30000) });
     const j = await res.json();
-    $('#askAnswer').textContent = j.answer || j.error;
-  } catch (e) { $('#askAnswer').textContent = 'Could not reach the Orchestrator. ' + e.message; }
+    out.textContent = j.answer || j.error || 'No answer came back. Please try again.';
+  } catch (e) {
+    out.textContent = e.name === 'TimeoutError' ? 'The AI took too long to answer. Please try again in a moment.' : 'Could not reach the Orchestrator. ' + e.message;
+  } finally { btn.disabled = false; }
 }
 $('#askForm').onsubmit = ask;
 
