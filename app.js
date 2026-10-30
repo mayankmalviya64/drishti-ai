@@ -1565,7 +1565,7 @@ async function telegramReport(done, waiting) {
       const res = await fetch(API + '/api/telegram', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(20000),
         body: JSON.stringify({
-          chat: m.chat, brand: r.brand, runId: state.runId, role: roleLabel(m), undo: m.role === 'director',
+          chat: m.chat, name: m.name, brand: r.brand, runId: state.runId, role: roleLabel(m), undo: m.role === 'director',
           health: `${r.ahi.before.value} → ${r.ahi.after.value}`,
           done: done.map(a => ({ id: a.id, title: a.feedback || a.title })), doneCount: done.length,
           waiting: waiting.map(a => ({ id: a.id, agent: agentName(a.agent), title: a.recommend || a.title, impact: a.impact, act: canDecide(m, a), who: whoDecides(a) })),
