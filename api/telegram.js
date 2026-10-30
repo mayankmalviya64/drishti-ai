@@ -178,6 +178,13 @@ async function onUpdate(u) {
 export async function GET(request) {
   const q = new URL(request.url).searchParams;
   if (!process.env.TELEGRAM_BOT_TOKEN) return json({ reason: 'not-configured' });
+  // ?hook=1 → is Telegram delivering button taps to us? (status only, no secrets)
+  if (q.get('hook')) {
+    hookChecked = null; await ensureHook(request); // re-register if it went missing
+    const i = await tg('getWebhookInfo').catch(e => ({ error: e.message }));
+    return json({ kv: kvReady(), url: i.url, pending: i.pending_update_count, lastError: i.last_error_message || null,
+      lastErrorAt: i.last_error_date ? new Date(i.last_error_date * 1000).toISOString() : null, error: i.error });
+  }
   try {
     await ensureHook(request);
     // With Upstash, the webhook already did the work: just read what it saved
