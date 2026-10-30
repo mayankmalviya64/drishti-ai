@@ -131,11 +131,46 @@ const state = {
   paceCut: {},       // channel → ₹/day the agents stopped spending (slows that tile's live counter)
 };
 
-// Safe localStorage (some browsers block it)
+// ---------------------------------------------------------------------------
+// SAME DATA ON EVERY DEVICE: these saved items (runs per brand, audit log, custom
+// conditions, AI usage log, rules, team, report settings) are also kept on our server.
+// Opening the site anywhere loads the newest copy first; every change is sent back
+// 2 seconds later. Coming back to the tab picks up changes made on another device.
+// ---------------------------------------------------------------------------
+const SYNC_KEYS = ['drishti-saved-runs', 'drishti-custom', 'drishti-ai-runs', 'drishti-ai-lastrun', 'drishti-ai-use',
+  'drishti-rules', 'drishti-team', 'drishti-mgr-limit', 'drishti-channels', 'drishti-email', 'drishti-director-added'];
+const SYNC_AT = 'drishti-sync-at'; // when this browser's copy was last saved / loaded
+
+// Safe localStorage (some browsers block it). Saving a synced item also queues a send to the server.
 const store = {
   get: k => { try { return localStorage.getItem(k); } catch { return null; } },
-  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} if (SYNC_KEYS.includes(k)) pushSync(); },
 };
+
+let pushTimer = null;
+function pushSync(now = false) {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => {
+    const keys = {};
+    for (const k of SYNC_KEYS) { const v = store.get(k); if (v !== null) keys[k] = v; }
+    const savedAt = Date.now();
+    try { localStorage.setItem(SYNC_AT, String(savedAt)); } catch {}
+    fetch(API + '/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ savedAt, keys }) }).catch(() => {});
+  }, now ? 0 : 2000);
+}
+
+// Load the server's copy if it is newer than this browser's. Returns true if it changed anything.
+async function pullSync(ms = 3000) {
+  try {
+    const j = await (await fetch(API + '/api/state', { signal: AbortSignal.timeout(ms), cache: 'no-store' })).json();
+    if (!j.keys || (j.savedAt || 0) <= Number(localStorage.getItem(SYNC_AT) || 0)) return false;
+    for (const [k, v] of Object.entries(j.keys)) if (SYNC_KEYS.includes(k)) localStorage.setItem(k, v);
+    localStorage.setItem(SYNC_AT, String(j.savedAt));
+    return true;
+  } catch { return false; }
+}
+// Before anything else reads the saved data (waits at most 3 seconds if the server is slow)
+await pullSync();
 
 // ?fast in the link skips the reading pace (used for quick testing).
 const FAST = new URLSearchParams(location.search).has('fast');
@@ -384,6 +419,10 @@ function restoreView(reopened = false) {
 }
 // Save when the tab is hidden or closed (e.g. you switch to Telegram or shut the browser)
 addEventListener('pagehide', saveView);
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) { saveView(); return pushSync(true); } // leaving the tab: save and send now
+  if (!state.running && await pullSync(4000)) location.reload(); // another device saved something newer
+});
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveView(); });
 
 // Minimal CSV parser (handles quotes, commas inside quotes, BOM, \r\n)
