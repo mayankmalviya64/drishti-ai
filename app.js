@@ -138,7 +138,9 @@ const state = {
 // 2 seconds later. Coming back to the tab picks up changes made on another device.
 // ---------------------------------------------------------------------------
 const SYNC_KEYS = ['drishti-saved-runs', 'drishti-custom', 'drishti-ai-runs', 'drishti-ai-lastrun', 'drishti-ai-use',
-  'drishti-rules', 'drishti-team', 'drishti-mgr-limit', 'drishti-channels', 'drishti-email', 'drishti-director-added'];
+  'drishti-rules', 'drishti-team', 'drishti-mgr-limit', 'drishti-email', 'drishti-director-added'];
+// (The Email / Telegram switches are NOT synced: each device keeps its own, so opening the
+//  site on a new device can never switch Telegram reports off on another one.)
 const SYNC_AT = 'drishti-sync-at'; // when this browser's copy was last saved / loaded
 
 // Safe localStorage (some browsers block it). Saving a synced item also queues a send to the server.
