@@ -557,7 +557,7 @@ const ALL_BRANDS = 'all';
 const TEAM_NAMES = ['Mayank', 'Arsh', 'Ashish', 'Anurag', 'Biswa'];
 // Mayank is on every visitor's team by default, as Director, so every run reports to him.
 // (chat = his Telegram chat with the bot; a chat id is not a secret, it only works through our bot)
-const DIRECTOR = { chat: '', name: 'Mayank', role: 'director', brand: 'all', phone: '919009601598' };
+const DIRECTOR = { chat: '907556204', name: 'Mayank', role: 'director', brand: 'all', phone: '919009601598' };
 const brandNames = () => [...new Set([...Object.values(BRANDS).map(b => b.name), state.data?.brand].filter(Boolean))];
 
 function loadTeam() {
