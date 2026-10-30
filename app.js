@@ -919,7 +919,9 @@ fetch(API + '/api/health', { signal: AbortSignal.timeout(8000) }).then(r => r.js
 // "Built-in rules" runs the same agent maths with no AI model at all.
 function renderModelPick() {
   const saved = store.get('drishti-model');
-  const opts = [...state.models, { id: 'rules', label: 'Built-in rules (no AI)' }];
+  // "Auto" (the default) lets the server try the model that has used the fewest tokens so far,
+  // skipping any model that is about to hit its limit
+  const opts = [{ id: '', label: 'Auto · fewest tokens first' }, ...state.models, { id: 'rules', label: 'Built-in rules (no AI)' }];
   $('#modelPick').innerHTML = opts.map(m => `<option value="${esc(m.id)}">${esc(m.label)}</option>`).join('');
   $('#modelPick').value = opts.some(m => m.id === saved) ? saved : opts[0].id;
 }
@@ -1924,9 +1926,18 @@ const TIPS = {
   },
   ahi() {
     const r = state.result; if (!r) return '';
-    return `<h4>${ic('gauge')} Agent Health Index</h4><p>One score for how healthy the ad account is, graded on TRUE revenue. Weighted geometric mean, so one weak area can’t hide behind strong ones.</p>
-      ${glimpseRows(['P2', 'P3', 'P4', 'P5'].map(k => ({ k })), [['Agent', x => agentName(x.k)], ['Before', x => r.ahi.before.scores[x.k], 'n'], ['After', x => r.ahi.after.scores[x.k], 'n']])}
-      <p>Data gate (Signal): ${r.signal.trustScore}/100 → ${r.signal.gateOpen ? 'open' : 'SHUT'}</p>`;
+    const A = r.ahi;
+    return `<h4>${ic('gauge')} Agent Health Index</h4>
+      <p>One score (0–100) for how healthy the ad account is, graded on TRUE revenue. <b>${A.before.value} → ${A.after.value}</b> · ${esc(A.after.status)}</p>
+      <div class="k">Calculation</div>
+      <p><code>AHI = G × P2^0.30 × P3^0.20 × P4^0.25 × P5^0.25</code><br>
+      A weighted geometric mean, so one weak area can’t hide behind strong ones. G = 1 if the data can be trusted (Signal score ≥ 60), else 0.</p>
+      <p>Now: ${ahiSum(A.before, r)}<br>After the actions: ${ahiSum(A.after, r)}</p>
+      <div class="k">Category scores and their ranges</div>
+      ${ahiTable(r)}
+      <div class="k">Score bands</div>
+      <ul><li><b style="color:var(--green)">70–100</b> healthy · <b style="color:var(--amber)">50–69</b> watch · <b style="color:var(--red)">0–49</b> alert (for each category)</li>
+        <li>Overall status: <b>Green</b> all ≥ 70 · <b>Amber</b> any 50–69 · <b>Red 1</b> one below 50 · <b>Red 2</b> two or more below 50 · <b>Red 3</b> data gate shut (score forced to 0)</li></ul>`;
   },
   hub() {
     const r = state.result;
@@ -1990,6 +2001,44 @@ const TIPS = {
   'brand-crunchkart'() { return `<h4>Crunchkart</h4><p>Aarush’s snacks brand · ₹9 L/month on Facebook, Instagram and Google. Fictional sample data.</p>`; },
   'brand-shyamlal'() { return `<h4>Shyamlal Masale</h4><p>Mr. Shyamlal’s Indore spices brand, moving from TV to digital · ₹40 L/month on Facebook, Instagram, Google and JioHotstar TV. Fictional sample data.</p>`; },
 };
+
+// HEALTH SCORE helpers, shared by the health-score panel and the "How the score is built" card.
+const AHI_W = { P2: 0.30, P3: 0.20, P4: 0.25, P5: 0.25 };
+const band = v => (v >= 70 ? 'var(--green)' : v >= 50 ? 'var(--amber)' : 'var(--red)');
+// "1 × 45^0.30 × 60^0.20 × 72^0.25 × 88^0.25 = 64"
+// (a score of 0 counts as 1 in the product, otherwise one zero would wipe out everything)
+const ahiSum = (x, r) => `${r.signal.gateOpen ? 1 : 0} × ${Object.keys(AHI_W).map(k => `${Math.max(1, x.scores[k])}^${AHI_W[k].toFixed(2)}`).join(' × ')} = <b>${x.value}</b>`;
+function ahiTable(r) {
+  const A = r.ahi, E = A.explain || {}, pc = v => (v == null ? '—' : `${v}%`);
+  // How the raw number maps to the score, e.g. "20% → 0 · 10% → 100"
+  const range = e => (!e ? '0–100' : e.parts ? 'see the parts below' : `${e.b}${e.unit} → 0 · ${e.t}${e.unit} → 100`);
+  const cell = (val, score) => `${val} → <b style="color:${band(score)}">${score}</b>`;
+  const rows = Object.keys(AHI_W).map(k => {
+    const e = E[k];
+    const raw = side => (!e ? '' : e.parts ? '' : pc(e[side]));
+    return `<tr><td>${agentName(k)}<br><small>${esc(e?.kpi || '')}</small></td><td class="num">${AHI_W[k] * 100}%</td><td>${range(e)}</td>
+      <td class="num">${e && !e.parts ? cell(raw('before'), A.before.scores[k]) : `<b style="color:${band(A.before.scores[k])}">${A.before.scores[k]}</b>`}</td>
+      <td class="num">${e && !e.parts ? cell(raw('after'), A.after.scores[k]) : `<b style="color:${band(A.after.scores[k])}">${A.after.scores[k]}</b>`}</td></tr>`;
+  }).join('');
+  const p3 = E.P3?.parts;
+  return `<table><tr><th>Category</th><th>Weight</th><th>Range (value → score)</th><th>Before</th><th>After</th></tr>${rows}
+    <tr><td>Signal (data gate G)<br><small>data trust score</small></td><td>gate</td><td>needs ≥ 60, else AHI = 0</td><td colspan="2" class="num">${r.signal.trustScore}/100 → ${r.signal.gateOpen ? 'open' : 'SHUT'}</td></tr></table>
+    ${p3 ? `<p class="hint">Creative Studio score = 0.54 × replacements ready (${p3.readyBefore}% → ${p3.readyAfter}%) + 0.30 × local-language score (${p3.regionalBefore}% → ${p3.regionalAfter}% of regional spend; 0% scores 0, 60% scores 100) + 0.16 × 100 (brand & ASCI check).</p>` : ''}`;
+}
+
+// AI TOKENS card, last in Reasoning: what this run used per model, today's total on this
+// device, and the order the server tries models in (fewest tokens per call first;
+// a model about to hit its limit is moved to the end).
+function renderTokens(r) {
+  const card = $('#tokenCard');
+  const ai = r.ai || {}, u = aiToday(), byModel = Object.entries(ai.byModel || {});
+  card.innerHTML = `<h3>AI tokens</h3>
+    <p><b>${kTok(ai.tokens || 0)}</b> tokens on this run${ai.calls ? ` · ${ai.calls} AI call${ai.calls === 1 ? '' : 's'}` : ' · rules engine only (no AI)'} · <b>${kTok(u.tokens)}</b> today on this device</p>
+    ${byModel.length ? `<table><tr><th>Model</th><th>Calls</th><th>Tokens</th></tr>${byModel.map(([m, x]) => `<tr><td>${esc(m)}</td><td class="num">${x.calls}</td><td class="num">${nIN(x.tokens)}</td></tr>`).join('')}</table>` : ''}
+    ${ai.board?.length ? `<div class="k">Which model goes first next time</div>
+      <table><tr><th>#</th><th>Model</th><th>Avg tokens / call</th><th>Status</th></tr>${ai.board.map((b, i) => `<tr><td class="num">${i + 1}</td><td>${esc(b.provider)} · ${esc(b.model)}</td><td class="num">${b.calls ? nIN(b.avgTokens) : 'not used yet'}</td><td>${b.skip ? `<span style="color:var(--amber)">skipped: ${esc(b.skip)}</span>` : 'ready'}</td></tr>`).join('')}</table>
+      <p class="hint">The model with the fewest tokens per call so far is tried first. Any model close to its daily or per-minute limit is skipped and the next one takes over.</p>` : ''}`;
+}
 
 // Side-panel calculations for the five case-goal tiles (see kpiMath above)
 const stateWord = a => (!a ? 'no action' : a.state === 'done' ? 'done' : a.state === 'waiting' ? (a.held ? 'on hold' : 'waiting for you') : a.state);
@@ -2109,6 +2158,7 @@ addEventListener('scroll', syncSideNav, { passive: true });
 // ---------------------------------------------------------------------------
 function renderDetails(r) {
   $('#details').hidden = false;
+  renderTokens(r);
 
   $('#briefCard').innerHTML = `<h3>Briefing for the marketing manager</h3>
     <p><b>${esc(r.briefing.headline)}</b></p>
@@ -2144,13 +2194,10 @@ function renderDetails(r) {
       <td><b style="color:${a.score >= 60 ? 'var(--red)' : a.score >= 40 ? 'var(--amber)' : 'var(--green)'}">${a.score}</b></td>
       <td>${a.ctrBase}% → ${a.ctrNow}%</td><td>${a.status === 'fatigued' ? 'Tired now' : a.daysToFatigue ? `~${a.daysToFatigue} days left` : 'Stable'}</td></tr>`).join('')}</table>`;
 
-  const w = { P2: 0.30, P3: 0.20, P4: 0.25, P5: 0.25 };
   $('#ahiCard').innerHTML = `<h3>How the score is built</h3>
-    <p>Each KPI is scored 0–100 against baseline and target, then rolled up as a weighted geometric mean, so one weak agent can't hide behind strong ones.</p>
-    <p><code>AHI = G × P2^.30 × P3^.20 × P4^.25 × P5^.25</code></p>
-    <table><tr><th>Agent</th><th>Weight</th><th>Before</th><th>After</th></tr>
-    ${Object.keys(w).map(k => `<tr><td>${agentName(k)}</td><td>${w[k] * 100}%</td><td>${r.ahi.before.scores[k]}</td><td><b>${r.ahi.after.scores[k]}</b></td></tr>`).join('')}
-    <tr><td>Signal (gate G)</td><td>gate</td><td colspan="2">${r.signal.trustScore} → ${r.signal.gateOpen ? 'open' : 'SHUT'}</td></tr></table>`;
+    <p>Each KPI is scored 0–100 against its range (the value that scores 0 → the value that scores 100), then rolled up as a weighted geometric mean, so one weak agent can't hide behind strong ones.</p>
+    <p><code>AHI = G × P2^.30 × P3^.20 × P4^.25 × P5^.25</code> = ${ahiSum(r.ahi.after, r)}</p>
+    ${ahiTable(r)}`;
 
   const chips = ['Why is true ROAS lower than what Meta shows?', 'Which action matters most and why?', 'Explain this to a business owner in two lines', 'What would you do before Diwali?'];
   $('#askChips').innerHTML = chips.map(c => `<button type="button">${esc(c)}</button>`).join('');

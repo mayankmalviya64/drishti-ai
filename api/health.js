@@ -2,13 +2,14 @@
 // GET            → tells the page which AI engine and connectors are switched on.
 // GET ?check=1   → pre-demo check: sends one tiny request to every AI model and reports
 //                  which ones answer right now (and why the others don't).
-import { engineLabel, models, providers } from '../lib/llm.js';
+import { engineLabel, models, providers, loadBoard, modelBoard } from '../lib/llm.js';
 import { json, preflight } from '../lib/http.js';
 
 export const OPTIONS = preflight;
 
 export async function GET(request) {
-  const base = { ok: true, engine: engineLabel(), models: models(), slackDefault: !!process.env.SLACK_WEBHOOK_URL,
+  await loadBoard();
+  const base = { ok: true, engine: engineLabel(), models: models(), board: modelBoard(), slackDefault: !!process.env.SLACK_WEBHOOK_URL,
     telegram: !!process.env.TELEGRAM_BOT_TOKEN, email: !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) };
   if (!new URL(request.url).searchParams.has('check')) return json(base);
 
