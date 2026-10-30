@@ -311,8 +311,49 @@ function fillScenarios(brand) {
   pick.closest('.cond').classList.toggle('active', pick.value !== 'normal');
 }
 
-// Picking another brand or condition: load that data, then ask you to start the agents on it
-$$('input[name=brand], #scenario').forEach(el => el.onchange = () => { loadSample(); askToStart(); });
+// Picking another brand or condition: keep this one's run as it is, then show the other one
+// exactly as you left it, or (first visit) ask you to start the agents on it.
+$$('input[name=brand], #scenario').forEach(el => el.onchange = () => { saveView(); loadSample(); if (!restoreView()) askToStart(); });
+
+// ---------------------------------------------------------------------------
+// ONE RUN PER BRAND (and condition), kept while this page is open.
+// Leaving Glowveda for Crunchkart and coming back shows Glowveda's run, decisions
+// and reports just as they were; Telegram taps made meanwhile are picked up again.
+// ---------------------------------------------------------------------------
+const views = {};
+const viewKey = d => (d?.source === 'Sample' ? `${d.brandKey}|${d.scenario || 'normal'}` : null);
+function saveView() {
+  const k = viewKey(state.data);
+  if (!k || !state.result || state.running) return;
+  views[k] = {
+    data: state.data, result: state.result, runId: state.runId, loop: state.loop,
+    agentLog: state.agentLog, mail: state.mail, tg: state.tg, updates: state.updates, paceCut: state.paceCut,
+    html: { feed: $('#feed').innerHTML, rows: $('#rows').innerHTML, strip: $('#agentStrip').innerHTML, bar: $('#agentBar').style.width,
+      pill: $('#statusPill').textContent, pillClass: $('#statusPill').className, results: $('#results').innerHTML, ask: $('#askAnswer').textContent },
+  };
+}
+function restoreView() {
+  const v = views[viewKey(state.data)];
+  if (!v) return false;
+  Object.assign(state, { data: v.data, result: v.result, runId: v.runId, loop: v.loop, agentLog: v.agentLog,
+    mail: v.mail, tg: v.tg, updates: v.updates, paceCut: v.paceCut });
+  $('#startPrompt')?.remove();
+  renderSources();
+  setStatus(describe(state.data));
+  $('#feed').innerHTML = v.html.feed;
+  $('#rows').innerHTML = v.html.rows;
+  $$('#rows [data-act]').forEach(b => b.onclick = () => decide(Number(b.dataset.id), b.dataset.act)); // re-attach the buttons
+  $('#agentStrip').innerHTML = v.html.strip; $('#agentBar').style.width = v.html.bar;
+  $('#statusPill').textContent = v.html.pill; $('#statusPill').className = v.html.pillClass;
+  $('#results').innerHTML = v.html.results; $('#results').hidden = false;
+  state.restoring = true; renderDetails(state.result); state.restoring = false; $('#details').hidden = false;
+  $('#askAnswer').textContent = v.html.ask;
+  countActions(); hubIdle(); runLabel();
+  // Still waiting for decisions (or undo-able)? Listen for Telegram taps again
+  if (sendsTo('telegram') && state.result.actions.some(a => a.state === 'waiting' || a.state === 'done')) pollTelegram();
+  log(`Back to ${state.data.brand}: everything is as you left it.`);
+  return true;
+}
 
 // Minimal CSV parser (handles quotes, commas inside quotes, BOM, \r\n)
 function parseCSV(text) {
@@ -1161,7 +1202,7 @@ async function run() {
   state.agentLog = {}; state.mail = {}; state.tg = {};
   // A fresh id per run, so Telegram button taps land on the right run's actions
   state.runId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  clearInterval(state.tgPoll);
+  state.stopTgPoll?.();
   const btn = $('#runBtn');
   btn.disabled = true; btn.classList.remove('idle'); btn.innerHTML = 'Agent running…';
   // No switching brand or twist mid-run (the results would belong to the old data)
@@ -1256,7 +1297,7 @@ function resetLoop() {
   if (!state.result) return runLabel();
   state.result = null; state.loop = 0;
   state.agentLog = {}; state.mail = {}; state.tg = {};
-  clearInterval(state.tgPoll);
+  state.stopTgPoll?.();
   $('#feed').innerHTML = EMPTY.feed;
   $('#rows').innerHTML = EMPTY.rows;
   $('#actCount').textContent = ''; $('#statusPill').textContent = ''; $('#statusPill').className = 'pill';
@@ -1345,11 +1386,11 @@ function actCard(a) {
   if (st === 'pending') return `<div class="card-a pending">…</div>`;
   if (st === 'executing') return `<div class="card-a executing" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('zap')} ${esc(a.execute || a.title)}</div></div>`;
   if (st === 'waiting') return `<div class="card-a waiting" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('clock')} ${esc(a.title)}</div>
-    <div class="foot">${a.held ? '<span class="badge hold">On hold</span>' : '<span class="badge wait">Your call</span>'}<button class="mini yes" data-act="approve" data-id="${a.id}">Approve</button>${a.held ? '' : `<button class="mini" data-act="hold" data-id="${a.id}">Hold</button>`}<button class="mini" data-act="reject" data-id="${a.id}">Reject</button></div></div>`;
+    <div class="foot">${a.held ? `<span class="badge hold">On hold${a.decidedBy ? ` · ${esc(a.decidedBy)}` : ''}</span>` : '<span class="badge wait">Your call</span>'}<button class="mini yes" data-act="approve" data-id="${a.id}">Approve</button>${a.held ? '' : `<button class="mini" data-act="hold" data-id="${a.id}">Hold</button>`}<button class="mini" data-act="reject" data-id="${a.id}">Reject</button></div></div>`;
   if (st === 'done') return `<div class="card-a done" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('check')} ${esc(a.feedback || a.title)}</div>
-    <div class="foot"><span class="badge auto">${a.tier === 'auto' ? (a.rule ? 'Auto · your rule' : 'Auto') : 'Approved'}${a.sentTo ? ' · sent to ' + esc(a.sentTo) : ''}</span>${a.tier === 'auto' ? `<button class="mini" data-act="undo" data-id="${a.id}">Undo</button>` : ''}${mail}</div></div>`;
+    <div class="foot"><span class="badge auto">${a.tier === 'auto' ? (a.rule ? 'Auto · your rule' : 'Auto') : `Approved${a.decidedBy ? ` by ${esc(a.decidedBy)}` : ''}`}${a.sentTo ? ' · sent to ' + esc(a.sentTo) : ''}</span>${a.tier === 'auto' ? `<button class="mini" data-act="undo" data-id="${a.id}">Undo</button>` : ''}${mail}</div></div>`;
   return `<div class="card-a ${st}" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${st === 'rejected' ? '✕ Rejected: nothing changed' : '↩ Rolled back: ' + esc(a.title)}</div>
-    <div class="foot"><span class="badge off">${st === 'rejected' ? 'You said no' : 'Undone by you'}${a.sentTo ? ' · sent to ' + esc(a.sentTo) : ''}</span>${mail}</div></div>`;
+    <div class="foot"><span class="badge off">${st === 'rejected' ? `Rejected by ${esc(a.decidedBy || 'you')}` : `Undone by ${esc(a.decidedBy || 'you')}`}${a.decidedAt ? ` · ${esc(a.decidedAt)}` : ''}${a.sentTo ? ' · sent to ' + esc(a.sentTo) : ''}</span>${mail}</div></div>`;
 }
 
 // Thread colour + label follow the action's state
@@ -1452,7 +1493,9 @@ async function decide(id, act, from, by) {
   const who = by ? `${by.name}${by.role ? ` (${by.role})` : ''}` : '';
   const via = from === 'telegram' ? ' on Telegram' : '';
   const actor = who || 'You'; // the log line names the Telegram teammate who decided
-  if (by) a.decidedBy = who;
+  // Who decided, shown on the card, in the details panel and in the email report
+  a.decidedBy = who || 'you, on the website';
+  a.decidedAt = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
   // Tell everyone else on the team what was decided on Telegram and by whom
   const tellTeam = text => { if (from === 'telegram' && who) telegramNote(`${text} by ${who}: ${a.title}`, by.chat); };
   if (act === 'hold') {
@@ -1557,17 +1600,36 @@ function telegramNote(note, skip) {
 
 // Every 4 seconds (for up to 30 minutes), ask the server whether any Telegram button was tapped.
 // We tell the server who may decide, and double-check each tap against that person's role here too.
+// The tick comes from a tiny background worker: browsers slow normal timers down to once a
+// minute when this tab is in the background (e.g. while you are in Telegram), but not a worker's.
+const ticker = (() => {
+  try { return new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 1200)'], { type: 'text/javascript' }))); }
+  catch { return null; }
+})();
+function every1s(fn) {
+  if (!ticker) { const t = setInterval(fn, 1200); return () => clearInterval(t); }
+  const h = () => fn(); ticker.addEventListener('message', h);
+  return () => ticker.removeEventListener('message', h);
+}
+
 function pollTelegram() {
-  clearInterval(state.tgPoll);
+  state.stopTgPoll?.();
   const run = state.runId, until = Date.now() + 30 * 60 * 1000;
-  state.tgPoll = setInterval(async () => {
+  let busy = false; // never two checks at once (each tap must be handled exactly once)
+  const stop = () => { state.stopTgPoll?.(); state.stopTgPoll = null; };
+  state.stopTgPoll = every1s(async () => {
+    if (busy) return;
     const open = state.result?.actions.filter(a => a.state === 'waiting') || [];
     const undoable = state.result?.actions.filter(a => a.state === 'done') || []; // the Director may undo these
-    if (run !== state.runId || (!open.length && !undoable.length) || Date.now() > until) return clearInterval(state.tgPoll);
-    const deciders = teamFor(state.result.brand).filter(m => m.role !== 'intern').map(m => m.chat);
-    const directors = teamFor(state.result.brand).filter(m => m.role === 'director').map(m => m.chat);
+    if (run !== state.runId || (!open.length && !undoable.length) || Date.now() > until) return stop();
+    const people = teamFor(state.result.brand);
+    const deciders = people.filter(m => m.role !== 'intern').map(m => m.chat);
+    const directors = people.filter(m => m.role === 'director').map(m => m.chat);
+    const names = Object.fromEntries(people.map(m => [m.chat, `${m.name} (${roleLabel(m)})`])); // "Mayank (Director)"
+    const held = open.filter(a => a.held).map(a => a.id);
+    busy = true;
     try {
-      const { decisions = {}, undos = {} } = await (await fetch(`${API}/api/telegram?run=${run}&open=${open.map(a => a.id).join(',')}&team=${deciders.join(',')}&done=${undoable.map(a => a.id).join(',')}&directors=${directors.join(',')}`)).json();
+      const { decisions = {}, undos = {} } = await (await fetch(`${API}/api/telegram?run=${run}&open=${open.map(a => a.id).join(',')}&team=${deciders.join(',')}&done=${undoable.map(a => a.id).join(',')}&directors=${directors.join(',')}&held=${held.join(',')}&names=${encodeURIComponent(JSON.stringify(names))}`)).json();
       // ↩ Undo taps from the Director
       for (const a of undoable) {
         const u = undos[a.id]; if (!u) continue;
@@ -1588,7 +1650,8 @@ function pollTelegram() {
         else if (d.act === 'hold' && !a.held) decide(a.id, 'hold', 'telegram', by);
       }
     } catch {}
-  }, 4000);
+    busy = false;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1610,7 +1673,7 @@ async function emailReport(done, waiting) {
     ['Brand', r.brand + (sample ? ' (sample brand, fictional data)' : '')],
     ['Health score', `${r.ahi.before.value} → ${r.ahi.after.value} (${r.ahi.after.status})`],
   ];
-  done.forEach((a, i) => lines.push([`Action ${i + 1} · ${agentName(a.agent)}`, `DONE: ${a.feedback || a.title}\nWhy: ${a.observed || a.detail}`]));
+  done.forEach((a, i) => lines.push([`Action ${i + 1} · ${agentName(a.agent)}`, `DONE: ${a.feedback || a.title}\nWhy: ${a.observed || a.detail}${a.decidedBy ? `\nApproved by: ${a.decidedBy}${a.decidedAt ? ` at ${a.decidedAt}` : ''}` : ''}`]));
   waiting.forEach((a, i) => lines.push([`Waiting for you ${i + 1}`, `${a.recommend || a.title}\nWhy: ${a.observed || a.detail}`]));
   lines.push(['Time', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST']);
 
@@ -1778,7 +1841,7 @@ const TIPS = {
       <div class="k">Fed back into ①</div><p class="new">↺ ${esc(a.feedback || a.title)}</p>
       ${state.mail[a.id] ? `<div class="k">Email report</div><p>${state.mail[a.id].href ? `<a href="${esc(state.mail[a.id].href)}">${esc(state.mail[a.id].text)}</a>` : esc(state.mail[a.id].text)}</p>` : ''}
       ${state.tg[a.id] ? `<div class="k">Telegram report</div><p>${esc(state.tg[a.id].text)}</p>` : ''}
-      ${a.decidedBy ? `<div class="k">Decided on Telegram by</div><p>${esc(a.decidedBy)}</p>` : ''}`;
+      ${a.decidedBy ? `<div class="k">Decided by</div><p>${esc(a.decidedBy)}${a.decidedAt ? ` at ${esc(a.decidedAt)}` : ''}</p>` : ''}`;
   },
   ahi() {
     const r = state.result; if (!r) return '';
@@ -1955,7 +2018,7 @@ function renderDetails(r) {
   const chips = ['Why is true ROAS lower than what Meta shows?', 'Which action matters most and why?', 'Explain this to a business owner in two lines', 'What would you do before Diwali?'];
   $('#askChips').innerHTML = chips.map(c => `<button type="button">${esc(c)}</button>`).join('');
   $$('#askChips button').forEach(b => b.onclick = () => { $('#askInput').value = b.textContent; ask(); });
-  log(`Run finished · ${r.engine}`);
+  if (!state.restoring) log(`Run finished · ${r.engine}`);
 }
 
 // Ask a follow-up question about this run.

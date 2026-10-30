@@ -99,6 +99,11 @@ export async function GET(request) {
     const decisions = {}, undos = {};
     const doneIds = new Set((q.get('done') || '').split(',').filter(Boolean));
     const directors = new Set((q.get('directors') || '').split(',').filter(Boolean));
+    const held = new Set((q.get('held') || '').split(',').filter(Boolean)); // already on hold on the site: don't redo the Hold
+    // Who is who, from the page: { chatId: "Mayank (Director)" }, so every decision names the person and their role
+    let names = {}; try { names = JSON.parse(q.get('names') || '{}'); } catch {}
+    const label = cb => names[String(cb.from?.id)] || names[String(cb.message.chat.id)] || cb.from?.first_name || 'Someone';
+    const at = () => new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit' });
     for (const u of await updates()) {
       const cb = u.callback_query;
       const [v, r, id] = (cb?.data || '').split(':');
@@ -109,14 +114,21 @@ export async function GET(request) {
           await tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Only the Director can undo actions.', show_alert: true }).catch(() => {});
           continue;
         }
-        undos[id] = { by: String(cb.message.chat.id), name: cb.from?.first_name || 'Director' };
-        await tg('answerCallbackQuery', { callback_query_id: cb.id, text: SAID.undo }).catch(() => {});
+        undos[id] = { by: String(cb.message.chat.id), name: label(cb) };
+        await tg('answerCallbackQuery', { callback_query_id: cb.id, text: `${SAID.undo} by ${label(cb)}` }).catch(() => {});
+        // Confirm in the chat which action was undone ("↩ Undo 3" → line "3. …" of the summary)
+        const btn = (cb.message.reply_markup?.inline_keyboard || []).flat().find(b => b.callback_data === cb.data);
+        const n = /\d+/.exec(btn?.text || '')?.[0];
+        const line = n ? (cb.message.text || '').split('\n').find(l => l.startsWith(`${n}. `)) : '';
+        await say(cb.message.chat.id, `<b>↩ Undone by ${esc(label(cb))}</b> · ${at()}${line ? `\n${esc(line.replace(/^\d+\.\s*/, ''))}` : ''}`,
+          { reply_to_message_id: cb.message.message_id }).catch(() => {});
         // Take the tapped Undo button off the message, so it can't be pressed twice
         const kb = (cb.message.reply_markup?.inline_keyboard || []).map(row => row.filter(b => !b.callback_data?.startsWith(`u:${run}:`) || !undos[b.callback_data.split(':')[2]])).filter(row => row.length);
         await tg('editMessageReplyMarkup', { chat_id: cb.message.chat.id, message_id: cb.message.message_id, reply_markup: { inline_keyboard: kb } }).catch(() => {});
         continue;
       }
       if (!VERBS[v] || v === 'u' || r !== run || !open.has(id)) continue;
+      if (v === 'h' && held.has(id)) { decisions[id] ||= { act: 'hold', by: String(cb.message.chat.id), name: label(cb) }; continue; }
       const by = String(cb.from?.id ?? cb.message.chat.id);
       // Someone whose role no longer allows this (e.g. changed to Intern after the report went out)
       if (team && !team.has(by) && !team.has(String(cb.message.chat.id))) {
@@ -125,15 +137,18 @@ export async function GET(request) {
       }
       // Approve / Reject are final: the first one wins. Hold can still be followed by a final decision.
       if (decisions[id] && decisions[id].act !== 'hold') {
-        await tg('answerCallbackQuery', { callback_query_id: cb.id, text: `Already decided by ${decisions[id].name}.` }).catch(() => {});
+        await tg('answerCallbackQuery', { callback_query_id: cb.id, text: `Already decided by ${decisions[id].name}.`, show_alert: true }).catch(() => {});
         continue;
       }
-      decisions[id] = { act: VERBS[v], by: String(cb.message.chat.id), name: cb.from?.first_name || 'Someone' };
-      // Stop the button's spinner and show the decision under the message (only works once; errors ignored)
-      await tg('answerCallbackQuery', { callback_query_id: cb.id, text: SAID[VERBS[v]] }).catch(() => {});
+      decisions[id] = { act: VERBS[v], by: String(cb.message.chat.id), name: label(cb) };
+      // Stop the button's spinner (with a toast) and write the decision, the person and their role under the message.
+      // Approve / Reject remove the buttons; Hold keeps Approve and Reject for later.
+      await tg('answerCallbackQuery', { callback_query_id: cb.id, text: `${SAID[VERBS[v]]} by ${label(cb)}` }).catch(() => {});
       await tg('editMessageText', {
         chat_id: cb.message.chat.id, message_id: cb.message.message_id, parse_mode: 'HTML',
-        text: `${esc(cb.message.text)}\n\n<b>${SAID[VERBS[v]]}</b>`,
+        text: `${esc(cb.message.text)}\n\n<b>${SAID[VERBS[v]]} by ${esc(label(cb))}</b> · ${at()}`,
+        ...(v === 'h' ? { reply_markup: { inline_keyboard: [[
+          { text: '✅ Approve', callback_data: `a:${run}:${id}` }, { text: '❌ Reject', callback_data: `r:${run}:${id}` }]] } } : {}),
       }).catch(() => {});
     }
     return json({ decisions, undos });
