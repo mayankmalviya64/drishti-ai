@@ -551,6 +551,8 @@ const ROLES = {
   srmanager: { label: 'Sr Manager', can: 'Decides every move' },
 };
 const ALL_BRANDS = 'all';
+// Team Phoenix: the only people who can be invited (each invite is for one of these names)
+const TEAM_NAMES = ['Arsh', 'Ashish', 'Anurag', 'Biswa'];
 const brandNames = () => [...new Set([...Object.values(BRANDS).map(b => b.name), state.data?.brand].filter(Boolean))];
 
 function loadTeam() {
@@ -609,23 +611,27 @@ function renderTeam() {
     ...brandNames().map(b => `<option${b === sel ? ' selected' : ''}>${esc(b)}</option>`)].join('');
   const roleOpts = sel => Object.entries(ROLES).map(([k, r]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${r.label}</option>`).join('');
   $('#teamList').innerHTML = state.team.length
-    ? state.team.map((m, i) => `<li><span class="tm-name"><b>${esc(m.name)}</b>${m.phone ? `<small>${esc(prettyPhone(m.phone))}</small>` : ''}</span>
+    ? state.team.map((m, i) => `<li><span class="tm-name"><b>${esc(m.name)}</b>${m.phone || m.tgName ? `<small>${esc(m.phone ? prettyPhone(m.phone) : `Telegram: ${m.tgName}`)}</small>` : ''}</span>
         <select class="field small" data-i="${i}" data-k="role" aria-label="Role of ${esc(m.name)}">${roleOpts(m.role)}</select>
         <select class="field small" data-i="${i}" data-k="brand" aria-label="Brand for ${esc(m.name)}">${brandOpts(m.brand)}</select>
         <button class="mini" type="button" data-del="${i}" aria-label="Remove ${esc(m.name)}">✕</button></li>`).join('')
-    : '<li class="none">No one yet. Invite yourself first, then your team.</li>';
+    : '<li class="none">No one yet. Invite Arsh, Ashish, Anurag or Biswa below.</li>';
   $$('#teamList select').forEach(s => s.onchange = () => { state.team[Number(s.dataset.i)][s.dataset.k] = s.value; saveTeam(); });
   $$('#teamList [data-del]').forEach(b => b.onclick = () => { state.team.splice(Number(b.dataset.del), 1); saveTeam(); });
   // Invites still waiting for the person to press Start
   $('#inviteList').innerHTML = state.invites.map(v => {
     const url = `https://t.me/${TG_BOT}?start=${v.code}`;
-    return `<li><span class="tm-name"><b>Invite · ${ROLES[v.role].label}</b><small>${esc(v.brand === ALL_BRANDS ? 'All brands' : v.brand)} · waiting for Start</small></span>
+    return `<li><span class="tm-name"><b>${esc(v.name)} · ${ROLES[v.role].label}</b><small>${esc(v.brand === ALL_BRANDS ? 'All brands' : v.brand)} · waiting for Start</small></span>
       <input class="field small" readonly value="${url}" aria-label="Invite link" onclick="this.select()">
       <button class="btn ghost small" type="button" data-copy="${url}">Copy</button>
       <a class="btn ghost small" href="${url}" target="_blank" rel="noopener">Open</a></li>`;
   }).join('');
   $$('#inviteList [data-copy]').forEach(b => b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy).then(() => { b.textContent = 'Copied'; }));
   if (!$('#invRole').options.length) $('#invRole').innerHTML = roleOpts('srmanager');
+  const taken = new Set([...state.team, ...state.invites].map(m => m.name));
+  const free = TEAM_NAMES.filter(n => !taken.has(n));
+  $('#invName').innerHTML = free.length ? free.map(n => `<option>${n}</option>`).join('') : '<option value="">Everyone is on the team</option>';
+  $('#invite').disabled = !free.length;
   const keep = $('#invBrand').value || ALL_BRANDS;
   $('#invBrand').innerHTML = brandOpts(keep);
   $('#roleHelp').innerHTML = Object.values(ROLES).map(r => `<li><b>${r.label}:</b> ${esc(r.can)}</li>`).join('');
@@ -633,7 +639,8 @@ function renderTeam() {
 
 // One invite = one one-time code. We keep checking every code that is still waiting (10 minutes each).
 function invite() {
-  const v = { code: Math.random().toString(36).slice(2, 10), role: $('#invRole').value, brand: $('#invBrand').value, until: Date.now() + 10 * 60 * 1000 };
+  if (!$('#invName').value) return;
+  const v = { code: Math.random().toString(36).slice(2, 10), name: $('#invName').value, role: $('#invRole').value, brand: $('#invBrand').value, until: Date.now() + 10 * 60 * 1000 };
   state.invites.push(v);
   renderTeam();
   clearInterval(state.tgLinkPoll);
@@ -646,10 +653,14 @@ function invite() {
         if (!j.linked) continue;
         state.invites = state.invites.filter(y => y !== x);
         // Same Telegram chat linked again → update their role instead of adding them twice
+        // Same Telegram chat linked again → update that entry instead of adding them twice.
+        // An older entry with the same team name (e.g. a fresh phone) is replaced too.
+        state.team = state.team.filter(m => m.chat === j.chat || m.name !== x.name);
         const old = state.team.find(m => m.chat === j.chat);
-        if (old) Object.assign(old, { name: j.name, role: x.role, brand: x.brand }); else state.team.push({ chat: j.chat, name: j.name, role: x.role, brand: x.brand });
+        const entry = { name: x.name, tgName: j.name, role: x.role, brand: x.brand };
+        if (old) Object.assign(old, entry); else state.team.push({ chat: j.chat, ...entry });
         saveTeam();
-        log(`Telegram linked for ${j.name} as ${ROLES[x.role].label}`);
+        log(`Telegram linked for ${x.name} as ${ROLES[x.role].label}`);
         const m = state.team.find(y => y.chat === j.chat);
         const what = m.role === 'srmanager' ? 'You can approve, hold or reject every move.'
           : m.role === 'manager' ? `You can approve, hold or reject moves up to ${inr(managerLimit())}/day. Bigger ones go to a Sr Manager.`
@@ -1423,19 +1434,20 @@ async function feedBack(a, line) {
 async function decide(id, act, from, by) {
   const a = state.result.actions.find(x => x.id === id); if (!a) return;
   const who = by ? `${by.name}${by.role ? ` (${by.role})` : ''}` : '';
-  const via = from === 'telegram' ? (who ? ` on Telegram, by ${who}` : ' on Telegram') : '';
+  const via = from === 'telegram' ? ' on Telegram' : '';
+  const actor = who || 'You'; // the log line names the Telegram teammate who decided
   if (by) a.decidedBy = who;
   // Tell everyone else on the team what was decided on Telegram and by whom
   const tellTeam = text => { if (from === 'telegram' && who) telegramNote(`${text} by ${who}: ${a.title}`, by.chat); };
   if (act === 'hold') {
     a.held = true; updateRow(a);
-    log(`You put "${a.title}" on hold${via}`);
+    log(`${actor} put "${a.title}" on hold${via}`);
     if (!from) telegramNote(`⏸ On hold (set on the site): ${a.title}`);
     tellTeam('⏸ Put on hold');
     return;
   }
   if (act === 'approve') {
-    log(`You approved "${a.title}"${via}`);
+    log(`${actor} approved "${a.title}"${via}`);
     a.state = 'executing'; updateRow(a, true);
     await wait(900);
     a.state = 'done'; updateRow(a);
@@ -1446,7 +1458,7 @@ async function decide(id, act, from, by) {
     tellTeam('✅ Approved');
   } else if (act === 'reject') {
     a.state = 'rejected'; updateRow(a);
-    log(`You rejected "${a.title}"${via}`);
+    log(`${actor} rejected "${a.title}"${via}`);
     if (!from) telegramNote(`❌ Rejected on the site: ${a.title}`);
     tellTeam('❌ Rejected');
   } else if (act === 'undo') {

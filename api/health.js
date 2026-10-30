@@ -1,10 +1,34 @@
 // api/health.js
-// GET → tells the page which AI engine and connectors are switched on.
-import { engineLabel, models } from '../lib/llm.js';
+// GET            → tells the page which AI engine and connectors are switched on.
+// GET ?check=1   → pre-demo check: sends one tiny request to every AI model and reports
+//                  which ones answer right now (and why the others don't).
+import { engineLabel, models, providers } from '../lib/llm.js';
 import { json, preflight } from '../lib/http.js';
 
 export const OPTIONS = preflight;
 
-export function GET() {
-  return json({ ok: true, engine: engineLabel(), models: models(), slackDefault: !!process.env.SLACK_WEBHOOK_URL });
+export async function GET(request) {
+  const base = { ok: true, engine: engineLabel(), models: models(), slackDefault: !!process.env.SLACK_WEBHOOK_URL,
+    telegram: !!process.env.TELEGRAM_BOT_TOKEN, email: !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) };
+  if (!new URL(request.url).searchParams.has('check')) return json(base);
+
+  // One 1-token request per model, all at once
+  const check = await Promise.all(providers().map(async p => {
+    const t0 = Date.now();
+    try {
+      const res = await fetch(p.url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p.key}` },
+        body: JSON.stringify({ model: p.model, messages: [{ role: 'user', content: 'Reply OK' }], max_tokens: 5 }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const data = await res.json().catch(() => ({}));
+      return { model: `${p.name} · ${p.model}`, ok: res.ok, status: res.status, ms: Date.now() - t0,
+        why: res.ok ? 'answering' : String(data?.error?.message || '').slice(0, 220),
+        requestsLeftToday: Number(res.headers.get('x-ratelimit-remaining-requests')) || null,
+        tokensLeftThisMinute: Number(res.headers.get('x-ratelimit-remaining-tokens')) || null };
+    } catch (e) {
+      return { model: `${p.name} · ${p.model}`, ok: false, why: e.message };
+    }
+  }));
+  return json({ ...base, check });
 }
