@@ -704,3 +704,13 @@ footer.foot { text-align: center; font-size: 12px; color: var(--muted); padding:
 .card-r p, .card-a .doing { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .ev .txt { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .ev.final .txt { -webkit-line-clamp: 2; }
+
+/* "Start the agent for <brand>" card, floating over the middle of the loop after a brand switch */
+.loop { position: relative; }
+.start-prompt { position: absolute; z-index: 30; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(440px, 92%);
+  text-align: center; padding: 24px 22px; border: 1px solid var(--orange); border-radius: 16px; background: var(--panel);
+  box-shadow: 0 18px 50px rgba(60, 20, 10, .18); }
+.start-prompt .sp-k { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--orange-ink); }
+.start-prompt h3 { margin: 4px 0 8px; font-size: 22px; color: var(--red-ink); }
+.start-prompt p { margin: 0 0 16px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.start-prompt .btn { animation: glow 2.4s ease-in-out infinite; }

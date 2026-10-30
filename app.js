@@ -291,7 +291,8 @@ function loadSample() {
   const s = makeSample(brand, { twists: { pixelBreak: $('#twistPixel').checked, marketShock: $('#twistShock').checked } });
   setData({ ...s, source: 'Sample' });
 }
-$$('input[name=brand], #twistPixel, #twistShock').forEach(el => el.onchange = loadSample);
+// Picking another brand or twist: load that brand's data, then ask you to start the agents on it
+$$('input[name=brand], #twistPixel, #twistShock').forEach(el => el.onchange = () => { loadSample(); askToStart(); });
 
 // Minimal CSV parser (handles quotes, commas inside quotes, BOM, \r\n)
 function parseCSV(text) {
@@ -915,6 +916,7 @@ async function run() {
   if (state.running) return;
   if (!state.data?.rows?.length) { openSheet('#ownData'); return setStatus('Load some data first.', 'err'); }
   state.running = true; state.loop++;
+  $('#startPrompt')?.remove();   // the "Start the agent for …" card, if showing
   state.agentLog = {}; state.mail = {}; state.tg = {};
   // A fresh id per run, so Telegram button taps land on the right run's actions
   state.runId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1002,12 +1004,31 @@ function resetLoop() {
   log(`Switched to ${state.data.brand}. Press Run to start the agents on it.`);
 }
 
+// After a brand / twist switch: a clear prompt in ② that starts the agents on the new data.
+// Nothing runs (and no email or Telegram goes out) until you press it.
+function askToStart() {
+  if (state.running) return;
+  const d = state.data, twists = [$('#twistPixel').checked && 'pixel breaks', $('#twistShock').checked && 'market shock'].filter(Boolean);
+  $('#startPrompt')?.remove();
+  $('#loop').insertAdjacentHTML('beforeend', `<div class="start-prompt" id="startPrompt" role="dialog" aria-label="Start the agent">
+    <p class="sp-k">Now on</p>
+    <h3>${esc(d.brand)}</h3>
+    <p>${d.clean.length.toLocaleString('en-IN')} ad rows from ${new Set(d.clean.map(r => r.channel)).size} channels${d.orders?.length ? `, ${d.orders.length.toLocaleString('en-IN')} orders` : ''}${twists.length ? ` · twist: ${twists.join(' + ')}` : ''}. The agents have not checked this brand yet.</p>
+    <button type="button" class="btn" id="startHere">${ic('play')}Start the agent for ${esc(d.brand)}</button>
+  </div>`);
+  $('#startHere').onclick = run;
+  $('#startHere').focus({ preventScroll: true });
+  stage(0, `<b>${esc(d.brand.split(' ')[0])}</b><small>press Start</small>`);
+  $('#loop').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // The Run button says which brand it will run on, e.g. "Run for Crunchkart"
 function runLabel() {
   const btn = $('#runBtn');
   if (state.running || !btn) return;
-  const name = state.data?.brand ? String(state.data.brand).split(/\s+/)[0] : '';
+  const name = state.data?.brand || '';
   btn.innerHTML = state.result ? `${ic('loop')}Run again` : `${ic('play')}Run ${name ? `for ${esc(name)}` : 'the agent'}`;
+  fillIcons();
   btn.classList.toggle('idle', !state.result);
 }
 
