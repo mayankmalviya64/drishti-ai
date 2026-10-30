@@ -163,7 +163,16 @@ function pushSync(now = false) {
 async function pullSync(ms = 3000) {
   try {
     const j = await (await fetch(API + '/api/state', { signal: AbortSignal.timeout(ms), cache: 'no-store' })).json();
-    if (!j.keys || (j.savedAt || 0) <= Number(localStorage.getItem(SYNC_AT) || 0)) return false;
+    if (!j.keys) return false;
+    // First sync in this browser: keep what it already has (e.g. today's runs), take only
+    // what is missing from the server, then send the combined copy back
+    if (!localStorage.getItem(SYNC_AT)) {
+      for (const [k, v] of Object.entries(j.keys)) if (SYNC_KEYS.includes(k) && localStorage.getItem(k) === null) localStorage.setItem(k, v);
+      localStorage.setItem(SYNC_AT, String(j.savedAt || 1));
+      pushSync(true);
+      return true;
+    }
+    if ((j.savedAt || 0) <= Number(localStorage.getItem(SYNC_AT) || 0)) return false;
     for (const [k, v] of Object.entries(j.keys)) if (SYNC_KEYS.includes(k)) localStorage.setItem(k, v);
     localStorage.setItem(SYNC_AT, String(j.savedAt));
     return true;
