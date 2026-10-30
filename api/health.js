@@ -30,5 +30,13 @@ export async function GET(request) {
       return { model: `${p.name} · ${p.model}`, ok: false, why: e.message };
     }
   }));
-  return json({ ...base, check });
+  // Every model this Groq key may use today (Groq retires models now and then)
+  let groqModels = null;
+  if (process.env.GROQ_API_KEY) {
+    try {
+      const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, signal: AbortSignal.timeout(8000) });
+      groqModels = ((await r.json()).data || []).filter(m => m.active !== false).map(m => m.id).sort();
+    } catch {}
+  }
+  return json({ ...base, check, groqModels });
 }
