@@ -225,6 +225,11 @@ button.via-v span:first-child { flex: 1; min-width: 0; overflow: hidden; text-ov
 .chip span:hover { border-color: var(--orange); }
 .chip input:checked + span { border-color: var(--red); color: #fff; background: var(--red); }
 .btn.run { margin-left: auto; padding: 10px 20px; font-size: 14.5px; }
+/* Countdown to the next hourly check, top right next to the Run button */
+.next-check { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); font-size: 13px; color: var(--muted); white-space: nowrap; }
+.next-check b { color: var(--ink, inherit); font-variant-numeric: tabular-nums; font-size: 14px; }
+.next-check.due { color: var(--orange); border-color: var(--orange); }
+.next-check svg { width: 15px; height: 15px; }
 .btn.run.idle { animation: glow 2.4s ease-in-out infinite; }
 
 /* ---------- progress stepper ---------- */

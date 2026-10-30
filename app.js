@@ -342,7 +342,7 @@ function saveView() {
   const k = viewKey(state.data);
   if (!k || !state.result || state.running) return;
   views[k] = {
-    savedAt: Date.now(),
+    savedAt: Date.now(), runAt: state.runAt,
     data: state.data, result: state.result, runId: state.runId, loop: state.loop,
     agentLog: state.agentLog, mail: state.mail, tg: state.tg, updates: state.updates, paceCut: state.paceCut,
     html: { feed: $('#feed').innerHTML, rows: $('#rows').innerHTML, strip: $('#agentStrip').innerHTML, bar: $('#agentBar').style.width,
@@ -354,7 +354,7 @@ function restoreView(reopened = false) {
   const v = views[viewKey(state.data)];
   if (!v) return false;
   v.data ||= state.data; // sample data, freshly rebuilt by loadSample()
-  Object.assign(state, { data: v.data, result: v.result, runId: v.runId, loop: v.loop, agentLog: v.agentLog,
+  Object.assign(state, { runAt: v.runAt || v.savedAt, data: v.data, result: v.result, runId: v.runId, loop: v.loop, agentLog: v.agentLog,
     mail: v.mail, tg: v.tg, updates: v.updates, paceCut: v.paceCut });
   $('#startPrompt')?.remove();
   renderSources();
@@ -1227,6 +1227,7 @@ async function run() {
   state.agentLog = {}; state.mail = {}; state.tg = {};
   // A fresh id per run, so Telegram button taps land on the right run's actions
   state.runId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  state.runAt = Date.now(); // the hourly countdown starts from here (next check = this + 1 hour)
   state.stopTgPoll?.();
   const btn = $('#runBtn');
   btn.disabled = true; btn.classList.remove('idle'); btn.innerHTML = 'Agent running…';
@@ -1320,6 +1321,7 @@ const EMPTY = { feed: $('#feed').innerHTML, rows: $('#rows').innerHTML };
 // New data (another brand, a twist, your own file) means the last run's results
 // belong to different numbers. Clear them and ask for a fresh run on the new data.
 function resetLoop() {
+  state.runAt = null; // a brand that hasn't run yet has no countdown
   if (!state.result) return runLabel();
   state.result = null; state.loop = 0;
   state.agentLog = {}; state.mail = {}; state.tg = {};
@@ -2286,4 +2288,27 @@ hubIdle();
   restoreView(true);
 })();
 setTimeout(watchBeat, 500); // ② starts watching straight away
+
+// ---------------------------------------------------------------------------
+// HOURLY LOOP: each brand is checked again one hour after its last run started.
+// Run at 12:05 → the next check is at 1:05, so at 1:00 the clock shows 05:00.
+// When it reaches zero the agents run again by themselves. A brand that was due
+// while the page was closed (or while you were on another brand) runs as soon as
+// it is back on screen.
+// ---------------------------------------------------------------------------
+const HOUR = 60 * 60 * 1000;
+const clockTime = t => new Date(t).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+function tickNextCheck() {
+  const el = $('#nextCheck'), text = $('#nextCheckText');
+  if (state.running) { text.textContent = 'Checking now…'; el.classList.add('due'); return; }
+  el.classList.remove('due');
+  if (!state.runAt || !state.result) { text.textContent = 'Auto check · not started'; el.title = 'Run the agent once; after that it checks this brand again every hour.'; return; }
+  const next = state.runAt + HOUR, left = next - Date.now();
+  if (left <= 0) { log(`Hourly check: ${state.data.brand} is due (last run ${clockTime(state.runAt)}), running again.`); run(); return; }
+  const m = Math.floor(left / 60000), sec = Math.floor((left % 60000) / 1000);
+  text.innerHTML = `Next check in <b>${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}</b>`;
+  el.title = `Drishti re-checks ${state.data.brand} every hour. Last run ${clockTime(state.runAt)} · next ${clockTime(next)}.`;
+}
+setInterval(tickNextCheck, 1000);
+tickNextCheck();
 if (new URLSearchParams(location.search).has('run')) setTimeout(run, 300);
