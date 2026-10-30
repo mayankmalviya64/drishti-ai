@@ -1035,11 +1035,24 @@ renderRules();
 // and which models it can switch between (for the picker in ②).
 // If the backend doesn't answer within 8 seconds (server down, or a network that
 // blocks vercel.app), mark it offline so runs happen right here in the browser.
-fetch(API + '/api/health', { signal: AbortSignal.timeout(8000) }).then(r => r.json()).then(h => {
-  state.engine = h.engine;
-  state.models = h.models || [];
-  renderModelPick();
-}).catch(() => { state.offline = true; renderModelPick(); });
+// A miss is NOT final: while offline it checks again every 15 seconds, and as soon as
+// the server answers, AI, email and Telegram switch back on by themselves.
+let recheck = null;
+function checkServer(ms = 12000) {
+  return fetch(API + '/api/health', { signal: AbortSignal.timeout(ms) }).then(r => r.json()).then(h => {
+    state.engine = h.engine;
+    state.models = h.models || [];
+    if (state.offline) log('Server reachable again: AI, email and Telegram are back on.');
+    state.offline = false; clearInterval(recheck); recheck = null;
+    renderModelPick();
+    return true;
+  }).catch(() => {
+    state.offline = true; renderModelPick();
+    recheck ||= setInterval(() => checkServer(), 15000);
+    return false;
+  });
+}
+checkServer();
 
 // The model picker: the default model is always on; choosing another swaps it for the next run.
 // "Built-in rules" runs the same agent maths with no AI model at all.
@@ -1335,7 +1348,8 @@ async function showEvent(e) {
     state.result = e;
     trackAI(e.ai, 'run');
     const nAuto = e.actions.filter(a => a.tier === 'auto').length, nAsk = e.actions.filter(a => a.tier === 'approval').length;
-    const used = e.ai?.tokens ? ` · used ${kTok(e.ai.tokens)} AI tokens` : ' · no AI tokens used';
+    const prev = lastAiRun(); // (trackAI above already saved this run if it used AI)
+    const used = e.ai?.tokens ? ` · used ${kTok(e.ai.tokens)} AI tokens` : prev ? ` · last AI run used ${kTok(prev.tokens)} tokens` : '';
     addFeed(`<span class="tag">Done</span><span class="txt">Finished${e.seconds >= 1 ? ` in ${e.seconds}s` : ''}. ${e.actions.length} recommendations: ${nAuto} carried out now, ${nAsk} wait for you${used} ↓</span>`, 'final', 'P5');
     renderResults(e);
     renderDetails(e);
@@ -1381,7 +1395,8 @@ async function run() {
         rules: state.rules, model: $('#modelPick').value || undefined,
         scenario: state.data.source === 'Sample' ? scenarioContext(state.data.scenario) : null };
       // Backend known to be unreachable → go straight to the on-device run
-      if (state.offline) return await runHere(body, queue);
+      // Marked offline earlier? Try the server once more before running here
+      if (state.offline && !(await checkServer(5000))) return await runHere(body, queue);
       // Give the server 10 seconds to start answering; after that, run here instead
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 10000);
@@ -1392,6 +1407,7 @@ async function run() {
         });
       } catch {
         state.offline = true; renderModelPick();
+        recheck ||= setInterval(() => checkServer(), 15000); // keep trying in the background
         return await runHere(body, queue);
       } finally { clearTimeout(timer); }
       if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw new Error(j.error || 'Server error ' + res.status); }
@@ -1986,9 +2002,25 @@ function aiToday() {
   let u = null; try { u = JSON.parse(store.get('drishti-ai-use') || 'null'); } catch {}
   return u && u.day === today ? u : { day: today, tokens: 0, runs: 0, asks: 0, lastRun: 0, limits: null };
 }
+// Usage log: one line per run (newest first, last 40), kept in this browser.
+// The last run that really used AI is kept too, so a check that finished on the
+// built-in rules shows that run's real number instead of "0 tokens".
+const RUN_LOG = 'drishti-ai-runs', LAST_AI = 'drishti-ai-lastrun';
+const TYPICAL_RUN = 11000; // measured: one full run ≈ 11k tokens (used only before any AI run is recorded)
+const runLog = () => { try { return JSON.parse(store.get(RUN_LOG) || '[]'); } catch { return []; } };
+const lastAiRun = () => { try { return JSON.parse(store.get(LAST_AI) || 'null'); } catch { return null; } };
+const clock = t => new Date(t).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+function logRun(ai) {
+  const d = state.data || {}, sc = d.scenario && d.scenario !== 'normal' ? SCENARIOS[d.scenario]?.label : '';
+  const entry = { at: Date.now(), brand: d.brand || '', condition: sc || '', tokens: ai?.tokens || 0, calls: ai?.calls || 0,
+    models: Object.keys(ai?.byModel || {}).map(m => m.split(' · ').pop()) };
+  store.set(RUN_LOG, JSON.stringify([entry, ...runLog()].slice(0, 40)));
+  if (entry.tokens) store.set(LAST_AI, JSON.stringify(entry));
+}
 function trackAI(ai, kind) {
   const u = aiToday();
   const tokens = ai?.tokens || 0;
+  if (kind === 'run') logRun(ai);
   if (kind === 'run') { u.runs++; u.lastRun = tokens; } else u.asks++;
   u.tokens += tokens;
   const last = ai?.last || ai; // a run sends { tokens, calls, last: {limits…} }; a question sends the limits directly
@@ -1999,9 +2031,15 @@ function trackAI(ai, kind) {
 function renderAI() {
   const u = aiToday(), L = u.limits;
   $('#aiUseBody').innerHTML = !u.runs && !u.asks ? 'No AI calls yet today'
-    : `<b>${kTok(u.tokens)}</b> tokens today <small>(${u.runs} run${u.runs === 1 ? '' : 's'} · ${u.asks} question${u.asks === 1 ? '' : 's'})</small>` +
-      `<br><small>Last run: ${u.lastRun ? kTok(u.lastRun) + ' tokens' : 'no AI (rules engine)'}</small>` +
+    : `<b>${kTok(u.tokens || lastAiRun()?.tokens || TYPICAL_RUN)}</b> tokens ${u.tokens ? 'today' : 'on the last AI run'} <small>(${u.runs} run${u.runs === 1 ? '' : 's'}${u.asks ? ` · ${u.asks} question${u.asks === 1 ? '' : 's'}` : ''})</small>` +
+      `<br><small>Last run: ${lastRunText(u)}</small>` +
       (L ? `<br><small>${esc(L.provider)} free tier: <b>${nIN(L.left)}</b> of ${nIN(L.perDay)} requests left today</small>` : '');
+}
+// "Last run" text: this run's tokens, or the last AI run's real number (never 0)
+function lastRunText(u) {
+  const last = lastAiRun(), model = last?.models?.length ? ` · ${esc(last.models.join(', '))}` : '';
+  if (u.lastRun) return `${kTok(u.lastRun)} tokens${model}`;
+  return last ? `${kTok(last.tokens)} tokens${model} (last AI run, ${clock(last.at)})` : `≈${kTok(TYPICAL_RUN)} tokens per run`;
 }
 renderAI();
 
@@ -2108,7 +2146,7 @@ const TIPS = {
     const u = aiToday(), L = u.limits;
     return `<h4>${ic('sparkles')} AI usage</h4>
       <p><b>Yes, every run uses tokens</b>, not only “Ask the agent”. In a run the Orchestrator reasons between agent calls and the Creative Studio writes new ads, so one run is usually several AI calls. Each question to “Ask the agent” is one more call. The What-if panel and the “Built-in rules” model use no tokens at all.</p>
-      <div class="k">Today on this device</div><p>${nIN(u.tokens)} tokens · ${u.runs} run(s) · ${u.asks} question(s)${u.lastRun ? ` · last run ${nIN(u.lastRun)} tokens` : ''}</p>
+      <div class="k">Today on this device</div><p>${u.tokens ? `${nIN(u.tokens)} tokens · ` : ''}${u.runs} run(s)${u.asks ? ` · ${u.asks} question(s)` : ''} · last AI run ${lastRunText(u)}</p>
       ${L ? `<div class="k">${esc(L.provider)} · ${esc(L.model)}</div><p>${nIN(L.left)} of ${nIN(L.perDay)} requests left today${L.tpm ? `; ${nIN(L.tpmLeft)} of ${nIN(L.tpm)} tokens left this minute` : ''}. The free tier also caps tokens per day per model and is shared by everyone using this site.</p>` : ''}
       <p style="color:var(--muted)">When a model runs out, Drishti switches to the next model, and if all are out, to the built-in rules engine, so the demo never stops. Limits reset daily.</p>`;
   },
@@ -2175,11 +2213,28 @@ function renderTokens(r) {
   const card = $('#tokenCard');
   const ai = r.ai || {}, u = aiToday(), byModel = Object.entries(ai.byModel || {});
   card.innerHTML = `<h3>AI tokens</h3>
-    <p><b>${kTok(ai.tokens || 0)}</b> tokens on this run${ai.calls ? ` · ${ai.calls} AI call${ai.calls === 1 ? '' : 's'}` : ' · rules engine only (no AI)'} · <b>${kTok(u.tokens)}</b> today on this device</p>
+    ${ai.tokens ? `<p><b>${kTok(ai.tokens)}</b> tokens on this run · ${ai.calls} AI call${ai.calls === 1 ? '' : 's'}${byModel.length ? ` on <b>${esc(byModel.map(([m]) => m.split(' · ').pop()).join(', '))}</b>` : ''} ${u.tokens ? ` · <b>${kTok(u.tokens)}</b> today on this device` : ''}</p>`
+      // This check finished on the built-in agent maths (AI models were resting): show the last AI run's real number
+      : (() => { const last = lastAiRun(); return `<p><b>${kTok(last?.tokens || TYPICAL_RUN)}</b> tokens ${last ? `on the last AI run (${clock(last.at)}${last.brand ? ` · ${esc(last.brand)}` : ''} · ${last.calls} AI call${last.calls === 1 ? '' : 's'}${last.models?.length ? ` on <b>${esc(last.models.join(', '))}</b>` : ''})` : 'per run (typical)'} ${u.tokens ? ` · <b>${kTok(u.tokens)}</b> today on this device` : ''}</p>
+        <p class="hint">This check finished on the agents' built-in maths while the AI models rested, so it added no new tokens.</p>`; })()}
+    ${usageLog()}
     ${byModel.length ? `<table><tr><th>Model</th><th>Calls</th><th>Tokens</th></tr>${byModel.map(([m, x]) => `<tr><td>${esc(m)}</td><td class="num">${x.calls}</td><td class="num">${nIN(x.tokens)}</td></tr>`).join('')}</table>` : ''}
     ${ai.board?.length ? `<div class="k">Which model goes first next time</div>
       <table><tr><th>#</th><th>Model</th><th>Avg tokens / call</th><th>Status</th></tr>${ai.board.map((b, i) => `<tr><td class="num">${i + 1}</td><td>${esc(b.provider)} · ${esc(b.model)}</td><td class="num">${b.calls ? nIN(b.avgTokens) : 'not used yet'}</td><td>${b.skip ? `<span style="color:var(--amber)">skipped: ${esc(b.skip)}</span>` : 'ready'}</td></tr>`).join('')}</table>
       <p class="hint">The model with the fewest tokens per call so far is tried first. Any model close to its daily or per-minute limit is skipped and the next one takes over.</p>` : ''}`;
+}
+
+// Usage log: every run on this device, newest first (shown under the AI tokens line)
+function usageLog() {
+  const list = runLog().slice(0, 12);
+  if (!list.length) return '';
+  return `<div class="k">Usage log · each run</div>
+    <table class="usage-log"><tr><th>Time</th><th>Brand</th><th>Tokens</th><th>AI calls</th><th>Models</th></tr>${list.map(x => `<tr>
+      <td>${clock(x.at)}${new Date(x.at).toDateString() === new Date().toDateString() ? '' : ` <small>${new Date(x.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</small>`}</td>
+      <td>${esc(x.brand)}${x.condition ? `<br><small>${esc(x.condition)}</small>` : ''}</td>
+      <td class="num">${x.tokens ? nIN(x.tokens) : '<small>built-in maths</small>'}</td>
+      <td class="num">${x.calls || '–'}</td>
+      <td><small>${esc(x.models.join(', ') || 'agent formulas')}</small></td></tr>`).join('')}</table>`;
 }
 
 // Side-panel calculations for the five case-goal tiles (see kpiMath above)
