@@ -777,3 +777,17 @@ footer.foot { text-align: center; font-size: 12px; color: var(--muted); padding:
 .kpi .goal.miss { background: color-mix(in srgb, var(--amber) 15%, transparent); color: var(--amber); }
 .kpi.k1 { --k: #2f5fd0; } .kpi.k2 { --k: #d24a4a; } .kpi.k3 { --k: #6b3fd4; } .kpi.k4 { --k: #2e7d43; } .kpi.k5 { --k: #d9772b; }
 @media (max-width: 900px) { .results > .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Custom condition sheet */
+#ccText { width: 100%; resize: vertical; min-height: 76px; font: 14px/1.5 Inter, sans-serif; margin: 12px 0 8px; }
+.cc-eg { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.cc-eg button { border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 4px 10px; font: 12px Inter, sans-serif; cursor: pointer; }
+.cc-eg button:hover { border-color: var(--orange); }
+.cc-draft { margin-top: 16px; border: 1px solid var(--line); border-left: 3px solid var(--red); border-radius: 12px; padding: 14px 16px; background: var(--soft); }
+.cc-draft h4 { margin: 0 0 4px; font-size: 15px; }
+.cc-draft h5 { margin: 14px 0 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.cc-draft ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
+.cc-draft .hl { font-weight: 600; margin: 0 0 6px; }
+.cc-draft .up { color: var(--green, #1a7f4b); } .cc-draft .down { color: var(--red-ink); }
+.cc-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.start-prompt .sp-rv { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }

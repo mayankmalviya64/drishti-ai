@@ -9,7 +9,7 @@
 import { makeSample, toCSV, BRANDS } from './lib/sample.js';
 import { cleanRows, cleanOrders, cleanCompetitors, EVENTS } from './lib/analyze.js';
 import { RULE_TYPES, DEFAULT_RULES, cleanRule, ruleText } from './lib/rules.js';
-import { SCENARIOS, scenariosFor, applyScenario, scenarioContext } from './lib/scenarios.js';
+import { SCENARIOS, scenariosFor, applyScenario, scenarioContext, useCustom, cleanDraft, draftLocally } from './lib/scenarios.js';
 
 // When the page is opened from GitHub Pages, talk to the Vercel backend.
 const API = location.hostname.endsWith('github.io') ? 'https://drishti-ai-mvp.vercel.app' : '';
@@ -210,7 +210,7 @@ document.addEventListener('click', e => {
 // in from the right. Only one is open at a time; the dark scrim behind closes it.
 // On phones the sidebar slides in from the left the same way.
 // ---------------------------------------------------------------------------
-const SHEETS = ['#rulesPanel', '#ownData', '#aboutPanel', '#agentsPanel', '#drawer', '#whatIf', '#teamPanel'];
+const SHEETS = ['#rulesPanel', '#ownData', '#aboutPanel', '#agentsPanel', '#drawer', '#whatIf', '#teamPanel', '#customCond'];
 function openSheet(sel) {
   closeSheets(sel);
   const el = $(sel);
@@ -302,18 +302,26 @@ function loadSample() {
 // The Conditions picker: "Normal conditions" first, then the what-if events that fit this brand
 function fillScenarios(brand) {
   const pick = $('#scenario'), was = pick.value || 'normal';
+  useCustom(brand, customDrafts[brand]); // this brand's own condition, if you made one
   const list = scenariosFor(brand), groups = [...new Set(list.map(x => x.group))];
   pick.innerHTML = groups.map(g => g === 'Base'
     ? list.filter(x => x.group === g).map(x => `<option value="${x.key}">${esc(x.label)}</option>`).join('')
     : `<optgroup label="${esc(g)}">${list.filter(x => x.group === g).map(x => `<option value="${x.key}">${esc(x.label)}</option>`).join('')}</optgroup>`).join('');
+  // Last option: write your own condition (opens the Custom condition panel)
+  pick.insertAdjacentHTML('beforeend', `<option value="__new">✎ Custom condition (type your own)…</option>`);
   pick.value = list.some(x => x.key === was) ? was : 'normal';
+  pick.dataset.was = pick.value; // to go back to, if the custom panel is opened and closed
   pick.title = SCENARIOS[pick.value].note;
   pick.closest('.cond').classList.toggle('active', pick.value !== 'normal');
 }
 
 // Picking another brand or condition: keep this one's run as it is, then show the other one
 // exactly as you left it, or (first visit) ask you to start the agents on it.
-$$('input[name=brand], #scenario').forEach(el => el.onchange = () => { saveView(); loadSample(); if (!restoreView()) askToStart(); });
+$$('input[name=brand], #scenario').forEach(el => el.onchange = () => {
+  // "Custom condition…" is not a condition yet: keep the current one and open the panel
+  if (el.value === '__new') { el.value = el.dataset.was || 'normal'; return openCustom(); }
+  saveView(); loadSample(); if (!restoreView()) askToStart();
+});
 
 // ---------------------------------------------------------------------------
 // ONE RUN PER BRAND (and condition), kept even when the page is closed.
@@ -814,6 +822,124 @@ $('#addRule').onclick = () => {
 };
 $('#resetRules').onclick = () => { state.rules = DEFAULT_RULES.map(r => ({ ...r })); saveRules(); renderRules(); };
 $('#rulesBtn').onclick = () => (isOpen('#rulesPanel') ? closeSheets() : openSheet('#rulesPanel'));
+
+// ---------------------------------------------------------------------------
+// CUSTOM CONDITION: you describe a situation in plain words. The server reads
+// today's news about it and the AI drafts a scenario for this brand (data changes,
+// rivals and their strategy, suggested responses). "Use this condition" puts it in
+// the Conditions picker; the agents then run on it within your rules and approvals.
+// One draft per brand, kept in this browser.
+// ---------------------------------------------------------------------------
+const CUSTOM = 'drishti-custom';
+const customDrafts = (() => { try { return JSON.parse(store.get(CUSTOM) || '{}'); } catch { return {}; } })();
+let pendingDraft = null; // the draft on screen, not yet used
+
+// Ideas to click, so the box is never a blank page
+const CC_IDEAS = {
+  glowveda: ['A rival launches a cheaper vitamin C serum with big Instagram influencer push', 'Monsoon arrives early in Mumbai and Bengaluru'],
+  crunchkart: ['Blinkit and Zepto run a 50% off snacks sale this week', 'A new protein-snack brand floods Instagram reels in Pune'],
+  shyamlal: ['Everest and MDH cut prices on garam masala before Diwali', 'Heavy rains in Indore and Bhopal stop deliveries for a few days'],
+};
+
+// What the drafter knows about the brand on screen (its product info, channels, regions, rivals)
+function brandInfo() {
+  const d = state.data, b = BRANDS[d.brandKey] || {};
+  const uniq = list => [...new Set(list.filter(Boolean))];
+  return { name: d.brand, category: d.category, who: b.who || '', aov: b.aov, dailySpend: b.dailySpend,
+    channels: uniq(d.clean.map(r => r.channel)), regions: uniq(d.clean.map(r => r.region)),
+    campaigns: uniq(d.clean.map(r => r.campaign)).slice(0, 14), rivals: uniq(d.cleanComp.map(c => c.competitor)) };
+}
+
+function openCustom() {
+  const d = state.data;
+  if (d?.source !== 'Sample') { setStatus('Custom conditions work on the sample brands for now. Pick Glowveda, Crunchkart or Shyamlal Masale.'); return; }
+  $('#ccBrand').textContent = d.brand;
+  const mine = customDrafts[d.brandKey];
+  $('#ccText').value = mine?.text || '';
+  $('#ccEg').innerHTML = (CC_IDEAS[d.brandKey] || []).map(t => `<button type="button">${esc(t)}</button>`).join('');
+  $$('#ccEg button').forEach(b => b.onclick = () => { $('#ccText').value = b.textContent; $('#ccText').focus(); });
+  pendingDraft = mine || null;
+  $('#ccOut').innerHTML = mine ? showDraft(mine, true) : '';
+  wireDraft();
+  openSheet('#customCond');
+  setTimeout(() => $('#ccText').focus(), 350);
+}
+
+// The draft as a card: headline, effects on the data, rivals, suggested moves, news read
+function showDraft(dr, inUse = false) {
+  const pct = (v, word) => v === 1 ? '' : `<span class="${(word === 'ad prices' ? v < 1 : v > 1) ? 'up' : 'down'}">${word} ${v > 1 ? '+' : '−'}${Math.round(Math.abs(v - 1) * 100)}%</span>`;
+  const where = e => [e.channel, e.region, e.campaign && `“${e.campaign}” ads`].filter(Boolean).join(' · ') || 'All ads';
+  return `<div class="cc-draft">
+    <h4>${esc(dr.label)}</h4>
+    <p class="hl">${esc(dr.headline)}</p>
+    <p class="hint">${esc(dr.note)} Lasts the last ${dr.days} day${dr.days === 1 ? '' : 's'} of data. ${dr.external ? '<b>Market-wide shock: Storm Mode will hold big moves for your approval.</b>' : 'Not a market-wide shock: agents act on what the data shows, inside your rules.'}</p>
+    <h5>What changes in the data</h5>
+    <ul>${dr.effects.map(e => `<li><b>${esc(where(e))}</b>: ${[pct(e.cpm, 'ad prices'), pct(e.ctr, 'clicks'), pct(e.cvr, 'sales per click')].filter(Boolean).join(', ') || 'no change'}${e.why ? ` <small>(${esc(e.why)})</small>` : ''}</li>`).join('')}</ul>
+    ${dr.rivals.length ? `<h5>Competitors and their strategy</h5>
+    <ul>${dr.rivals.map(r => `<li><b>${esc(r.name)}</b> on ${esc(r.channel)}: ${esc(r.strategy)} <small>(their ads: “${esc(r.campaign)}”, ${Math.round(r.engagement * 1000) / 10}% click rate)</small></li>`).join('')}</ul>` : ''}
+    ${dr.moves.length ? `<h5>First read: how we could respond</h5><ul>${dr.moves.map(m => `<li>${esc(m)}</li>`).join('')}</ul>
+    <p class="hint">The agents decide the actual moves when they run, using your rules and approval limits.</p>` : ''}
+    <h5>Today's news read</h5>
+    ${dr.news.length ? `<ul>${dr.news.map(n => `<li>${n.link ? `<a href="${esc(n.link)}" target="_blank" rel="noopener">${esc(n.title)}</a>` : esc(n.title)}${n.source ? ` <small>· ${esc(n.source)}</small>` : ''}</li>`).join('')}</ul>`
+      : '<p class="hint">No matching headlines found, so this is treated as hypothetical.</p>'}
+    <p class="hint">Drafted by ${esc(dr.by === 'keywords' ? 'keyword reading (AI not reachable)' : dr.by)} · ${new Date(dr.madeAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+    <div class="cc-actions">
+      ${inUse ? `<button type="button" class="btn" data-cc="use">${ic('play')}Run the agents on it</button><button type="button" class="mini" data-cc="clear">Remove this condition</button>`
+        : `<button type="button" class="btn" data-cc="use">${ic('play')}Use this condition</button>`}
+    </div>
+  </div>`;
+}
+function wireDraft() {
+  $$('#ccOut [data-cc]').forEach(b => b.onclick = () => (b.dataset.cc === 'use' ? useDraft() : clearDraft()));
+  fillIcons();
+}
+
+// Draft button: ask the server (news + AI); if it is unreachable, read the words in the browser
+$('#ccForm').onsubmit = async ev => {
+  ev.preventDefault();
+  const text = $('#ccText').value.trim();
+  if (text.length < 8) { $('#ccOut').innerHTML = '<p class="hint">Write a sentence or two about the situation.</p>'; return; }
+  const btn = $('#ccDraft'), info = brandInfo();
+  btn.disabled = true;
+  $('#ccOut').innerHTML = '<p class="hint"><span class="typing">Reading today\'s news and drafting the scenario</span></p>';
+  let draft = null, why = '';
+  if (!state.offline) {
+    try {
+      const res = await fetch(API + '/api/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(40000),
+        body: JSON.stringify({ text, brand: info, model: $('#modelPick').value || undefined }) });
+      const j = await res.json();
+      if (j.draft) { draft = cleanDraft(j.draft, info); if (j.usage) trackAI(j.usage, 'ask'); }
+      else why = j.error || '';
+    } catch (e) { why = 'server not reachable'; }
+  } else why = 'server not reachable';
+  if (!draft) draft = draftLocally(text, info); // no news in the browser, but still a usable draft
+  pendingDraft = draft;
+  $('#ccOut').innerHTML = (why ? `<p class="hint">${esc(why)}: drafted from your words instead.</p>` : '') + showDraft(draft);
+  wireDraft();
+  btn.disabled = false;
+};
+
+// Put the draft in the Conditions picker, load it and offer to start the agents
+function useDraft() {
+  if (!pendingDraft || state.running) return;
+  const key = state.data.brandKey;
+  saveView();                               // keep the run you are leaving
+  customDrafts[key] = pendingDraft;
+  store.set(CUSTOM, JSON.stringify(customDrafts));
+  delete views[`${key}|custom`]; persistViews(); // an older custom run no longer matches
+  log(`Custom condition for ${state.data.brand}: “${pendingDraft.label}”`);
+  fillScenarios(key);
+  $('#scenario').value = 'custom';
+  loadSample(); closeSheets(); askToStart();
+}
+function clearDraft() {
+  const key = state.data.brandKey;
+  delete customDrafts[key]; store.set(CUSTOM, JSON.stringify(customDrafts));
+  delete views[`${key}|custom`]; persistViews();
+  pendingDraft = null; $('#ccOut').innerHTML = '';
+  if ($('#scenario').value === 'custom') { $('#scenario').value = 'normal'; loadSample(); if (!restoreView()) askToStart(); }
+  else fillScenarios(key);
+}
 
 // ---------------------------------------------------------------------------
 // WHAT-IF SCENARIOS: run the agents once per condition (in this browser, with the
@@ -1337,6 +1463,19 @@ function resetLoop() {
   log(`Switched to ${state.data.brand}. Press Run to start the agents on it.`);
 }
 
+// One line about the data, using the SAME counts as the tiles in ① Data in:
+// ad channels = the ad tiles, live sources = the number in ①'s header, orders = real
+// orders added up (not the number of order records), and today's live count from the Shopify tile.
+function dataSummary(d) {
+  const channels = new Set(d.clean.map(r => r.channel)).size;
+  const sources = sourceList().filter(s => s.on).length;
+  const days = new Set(d.clean.map(r => r.date)).size;
+  const totalOrders = Math.round(d.cleanOrders.reduce((s, o) => s + o.orders, 0));
+  const today = counts.Shopify ? Math.floor(counts.Shopify.v.orders) : null;
+  return `${d.clean.length.toLocaleString('en-IN')} ad rows from ${channels} ad channel${channels === 1 ? '' : 's'} (${sources} live sources in all)` +
+    (totalOrders ? `, ${totalOrders.toLocaleString('en-IN')} ${esc(d.ordersFrom || 'Shopify')} orders over ${days} days${today != null ? ` (${nIN(today)} so far today)` : ''}.` : ', no orders file.');
+}
+
 // After a brand / twist switch: a clear prompt in ② that starts the agents on the new data.
 // Nothing runs (and no email or Telegram goes out) until you press it.
 function askToStart() {
@@ -1346,8 +1485,9 @@ function askToStart() {
   $('#loop').insertAdjacentHTML('beforeend', `<div class="start-prompt" id="startPrompt" role="dialog" aria-label="Start the agent">
     <p class="sp-k">Now on</p>
     <h3>${esc(d.brand)}</h3>
-    <p>${d.clean.length.toLocaleString('en-IN')} ad rows from ${new Set(d.clean.map(r => r.channel)).size} channels${d.orders?.length ? `, ${d.orders.length.toLocaleString('en-IN')} orders` : ''}. ${sc ? '' : 'The agents have not checked this brand yet.'}</p>
+    <p>${dataSummary(d)} ${sc ? '' : 'The agents have not checked this brand yet.'}</p>
     ${sc ? `<p class="sp-sc"><b>${esc(sc.label)}</b> (hypothetical)<br>${esc(sc.note)}</p>` : ''}
+    ${sc?.rivals?.length ? `<p class="sp-rv">Rivals: ${sc.rivals.map(r => `<b>${esc(r.name)}</b>`).join(', ')}. Your rules and approvals still apply.</p>` : ''}
     <button type="button" class="btn" id="startHere">${ic('play')}Start the agent for ${esc(d.brand)}</button>
   </div>`);
   $('#startHere').onclick = run;
