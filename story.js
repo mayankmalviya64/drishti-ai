@@ -310,7 +310,7 @@ const CONNECTORS = [
   ['Inventory / ERP','Operations','Stock and run-rate per SKU (Shopify, Unicommerce or ERP)','API key','Hourly','P5','API or Airbyte'],
   ['Events calendar + news','Context','Sales, IPL schedule, festivals, elections; breaking-news scan (e.g. RSS, GDELT)','Public feeds / calendar share','Daily, plus on event','Orchestrator, P5','Scheduled fetch'],
   ['Meta Ad Library API + status pages','Context','Competitor ad launches; platform status and API error rates','Access token / public status pages','Daily / every 5 min','Orchestrator, P2','Scheduled fetch'],
-  ['Slack + WhatsApp Business (outbound)','Action channel','Approval inbox with Approve / Edit / Reject buttons, plain-language briefings, incident pages','Slack app (interactive messages); WhatsApp Cloud API','Instant','Orchestrator','Native apps']
+  ['Slack + Telegram (outbound)','Action channel','Approval inbox with Approve / Edit / Reject buttons, plain-language briefings, incident pages','Slack app (interactive messages); Telegram Bot API','Instant','Orchestrator','Native apps']
 ];
 $('connGrid').innerHTML = CONNECTORS.map(c=>`<div class="card conn"><div class="top"><h3 style="margin:0">${c[0]}</h3><span class="tag">${c[1]}</span></div>
   <div class="small">${c[2]}</div>

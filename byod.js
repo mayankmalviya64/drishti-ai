@@ -230,7 +230,7 @@ function run(){
     <p class="small">${losing.length ? `${inr(freed)} a month sits in losing cohorts. Redeployed, it adds about <b class="teal">${inr(cohortGain)}</b> a month.` : 'No cohort is below break-even.'}</p>` : '<p class="empty">Optional: add cohorts (audience, placement, region) to find hidden losers.</p>'}</div></div>`;
 
   // action plan
-  html += `<div class="card" style="margin-top:16px"><h3>5 · Action plan</h3><p class="muted small" style="margin-top:0"><span class="act-tier auto">AUTO</span> runs by itself inside the guardrails · <span class="act-tier ask">ASK</span> goes to your approval inbox on Slack or WhatsApp · everything is logged and can be rolled back.</p>
+  html += `<div class="card" style="margin-top:16px"><h3>5 · Action plan</h3><p class="muted small" style="margin-top:0"><span class="act-tier auto">AUTO</span> runs by itself inside the guardrails · <span class="act-tier ask">ASK</span> goes to your approval inbox on Slack or Telegram · everything is logged and can be rolled back.</p>
     ${plan.length ? `<div class="scroll-x"><table class="t"><tr><th>Tier</th><th>Agent</th><th>Action</th><th>Impact</th></tr>${plan.map(p=>`<tr><td><span class="act-tier ${p.tier}">${p.tier.toUpperCase()}</span></td><td class="muted">${p.agent}</td><td>${esc(p.txt)}</td><td class="teal" style="white-space:nowrap">${p.imp}</td></tr>`).join('')}</table></div>` : '<p class="empty">Nothing to change: your account already looks balanced.</p>'}
     <p class="muted tiny">Estimates use your 30-day numbers and a standard response curve. In production the same steps run on live hourly data and are proven with a 50/50 holdout.</p></div>`;
   $('bOut').innerHTML = html;

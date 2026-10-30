@@ -166,8 +166,13 @@ html.in-app .app { display: grid; }
 .side-nav .count:empty { display: none; }
 .side-report { margin-top: 8px; padding: 0 4px; }
 .side-report .side-k { padding-left: 6px; }
-#emailWrap + #phoneWrap { margin-top: 6px; }
-/* Email / WhatsApp switches above the address fields (each turns on and off by itself) */
+#emailWrap + #tgWrap { margin-top: 6px; }
+/* "Connect Telegram" button (turns green-ish once a chat is linked) */
+.tg-link { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px dashed var(--line-strong); background: var(--panel); color: var(--red-ink); border-radius: 9px; padding: 8px 10px; font: 600 12.5px Inter, sans-serif; cursor: pointer; }
+.tg-link svg { width: 14px; height: 14px; }
+.tg-link:hover { border-color: var(--orange); }
+.tg-link.linked { border-style: solid; color: var(--ink); }
+/* Email / Telegram switches above the address fields (each turns on and off by itself) */
 .via { display: flex; gap: 4px; margin: 0 0 6px; padding: 3px; background: var(--soft); border-radius: 9px; }
 .via button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; background: none; color: var(--muted); border-radius: 7px; padding: 5px 6px; font: 600 12px Inter, sans-serif; cursor: pointer; }
 .via button svg { width: 13px; height: 13px; }

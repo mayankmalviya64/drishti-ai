@@ -41,6 +41,7 @@ const ICON_PATHS = {
   loop: '<path d="M3 12a9 9 0 0 1 15.7-6L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.7 6L3 16"/><path d="M8 16H3v5"/>',
   gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
   layers: '<path d="m12 2 10 5-10 5L2 7l10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
   chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   db: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>',
   sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
@@ -122,6 +123,7 @@ const state = {
   agentLog: {},      // what each agent said on this run (for its hover card)
   updates: {},       // source name → lines of data that changed after actions ("fed back")
   mail: {},          // action id → email status text
+  tg: {},            // action id → Telegram status text
   loop: 0,           // how many times the loop has run
   rules: [],         // your standing rules, e.g. [{ type: 'flat', a: 2 }]
   models: [],        // AI models the backend can use (for the picker in ②)
@@ -493,15 +495,14 @@ const remember = (sel, key) => {
 };
 remember('#webhook', 'drishti-webhook');
 remember('#email', 'drishti-email');
-remember('#phone', 'drishti-phone');
 
-// Email / WhatsApp switches for action reports. Each one turns on or off by itself:
-// Email is on by default, WhatsApp is optional, and with both on every report goes to both.
+// Email / Telegram switches for action reports. Each one turns on or off by itself:
+// Email is on by default, Telegram is optional, and with both on every report goes to both.
 const sendsTo = via => $(`.via [data-via="${via}"]`).getAttribute('aria-checked') === 'true';
 function setChannels(on) {
   $$('.via button').forEach(b => b.setAttribute('aria-checked', String(on.includes(b.dataset.via))));
   $('#emailWrap').hidden = !on.includes('email');
-  $('#phoneWrap').hidden = !on.includes('whatsapp');
+  $('#tgWrap').hidden = !on.includes('telegram');
   store.set('drishti-channels', on.join(','));
 }
 $$('.via button').forEach(b => b.onclick = () => {
@@ -509,6 +510,36 @@ $$('.via button').forEach(b => b.onclick = () => {
   setChannels(on);
 });
 setChannels((store.get('drishti-channels') ?? 'email').split(',').filter(Boolean));
+
+// Telegram linking. The visitor taps "Connect Telegram", the bot opens with a one-time code,
+// they press Start, and our server spots that code and hands back their chat id.
+// The chat id is remembered on this device only.
+const TG_BOT = 'drishti_phoenix_bot';
+const tgChat = () => JSON.parse(store.get('drishti-tg') || 'null');
+function showTg() {
+  const t = tgChat();
+  $('#tgText').textContent = t ? `Linked: ${t.name} · change` : 'Connect Telegram';
+  $('#tgLink').classList.toggle('linked', !!t);
+}
+$('#tgLink').onclick = () => {
+  const code = Math.random().toString(36).slice(2, 10);
+  window.open(`https://t.me/${TG_BOT}?start=${code}`, '_blank', 'noopener');
+  $('#tgText').textContent = 'Press Start in Telegram…';
+  clearInterval(state.tgLinkPoll);
+  const until = Date.now() + 3 * 60 * 1000; // listen for 3 minutes
+  state.tgLinkPoll = setInterval(async () => {
+    if (Date.now() > until) { clearInterval(state.tgLinkPoll); return showTg(); }
+    try {
+      const j = await (await fetch(`${API}/api/telegram?link=${code}`)).json();
+      if (!j.linked) return;
+      clearInterval(state.tgLinkPoll);
+      store.set('drishti-tg', JSON.stringify({ chat: j.chat, name: j.name }));
+      showTg();
+      log(`Telegram linked for ${j.name}`);
+    } catch {}
+  }, 3000);
+};
+showTg();
 
 // ---------------------------------------------------------------------------
 // YOUR RULES: a list you can add to, edit and remove from.
@@ -881,10 +912,10 @@ async function run() {
   if (state.running) return;
   if (!state.data?.rows?.length) { openSheet('#ownData'); return setStatus('Load some data first.', 'err'); }
   state.running = true; state.loop++;
-  state.agentLog = {}; state.mail = {}; state.wa = {};
-  // A fresh id per run, so WhatsApp button taps land on the right run's actions
+  state.agentLog = {}; state.mail = {}; state.tg = {};
+  // A fresh id per run, so Telegram button taps land on the right run's actions
   state.runId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  clearInterval(state.waPoll);
+  clearInterval(state.tgPoll);
   const btn = $('#runBtn');
   btn.disabled = true; btn.classList.remove('idle'); btn.innerHTML = 'Agent running…';
   state.result = null;   // so the boxes start from step ① again
@@ -983,12 +1014,12 @@ function recCard(a) {
 function actCard(a) {
   const st = a.state || 'pending';
   const who = `<div class="who"><span class="tag" style="--c:var(--${a.agent})">${esc(agentName(a.agent))}</span><span class="lbl">${{ executing: 'agent working', done: 'action taken', waiting: 'needs you', rejected: 'not done', undone: 'rolled back', pending: '' }[st] || ''}</span></div>`;
-  // Report status lines (email, then WhatsApp). When email services are down the email line
+  // Report status lines (email, then Telegram). When email services are down the email line
   // becomes a link that opens the report in the visitor's own email app.
   const line = (m, icon) => !m ? '' : m.href
     ? `<a class="mail" href="${esc(m.href)}" title="${esc(m.text)}">${ic(icon)} ${esc(m.text)}</a>`
     : `<span class="mail ${m.ok ? 'sent' : ''}" title="${esc(m.text)}">${ic(icon)} ${esc(m.text)}</span>`;
-  const mail = line(state.mail[a.id], 'mail') + line(state.wa[a.id], 'chat');
+  const mail = line(state.mail[a.id], 'mail') + line(state.tg[a.id], 'send');
   if (st === 'pending') return `<div class="card-a pending">…</div>`;
   if (st === 'executing') return `<div class="card-a executing" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('zap')} ${esc(a.execute || a.title)}</div></div>`;
   if (st === 'waiting') return `<div class="card-a waiting" data-tip="act" data-id="${a.id}" tabindex="0">${who}<div class="doing">${ic('clock')} ${esc(a.title)}</div>
@@ -1092,14 +1123,14 @@ async function feedBack(a, line) {
 }
 
 // Approve / Hold / Reject (big moves) and Undo (small ones).
-// `from` is 'whatsapp' when the tap came from the WhatsApp buttons, so we don't message back twice.
+// `from` is 'telegram' when the tap came from the Telegram buttons, so we don't message back twice.
 async function decide(id, act, from) {
   const a = state.result.actions.find(x => x.id === id); if (!a) return;
-  const via = from === 'whatsapp' ? ' on WhatsApp' : '';
+  const via = from === 'telegram' ? ' on Telegram' : '';
   if (act === 'hold') {
     a.held = true; updateRow(a);
     log(`You put "${a.title}" on hold${via}`);
-    if (!from) whatsappNote(`⏸ On hold (set on the site): ${a.title}`);
+    if (!from) telegramNote(`⏸ On hold (set on the site): ${a.title}`);
     return;
   }
   if (act === 'approve') {
@@ -1110,11 +1141,11 @@ async function decide(id, act, from) {
     log(`${agentName(a.agent)} done: ${a.feedback || a.title}`);
     feedBack(a);
     if (sendsTo('email')) emailReport([a], []);
-    if (!from) whatsappNote(`✅ Approved on the site: ${a.feedback || a.title}`);
+    if (!from) telegramNote(`✅ Approved on the site: ${a.feedback || a.title}`);
   } else if (act === 'reject') {
     a.state = 'rejected'; updateRow(a);
     log(`You rejected "${a.title}"${via}`);
-    if (!from) whatsappNote(`❌ Rejected on the site: ${a.title}`);
+    if (!from) telegramNote(`❌ Rejected on the site: ${a.title}`);
   } else if (act === 'undo') {
     a.state = 'undone'; updateRow(a);
     log(`You rolled back "${a.title}"`);
@@ -1130,67 +1161,66 @@ async function decide(id, act, from) {
 }
 
 // ---------------------------------------------------------------------------
-// Action report: by email (default) and/or on WhatsApp, whichever are switched on in the sidebar.
+// Action report: by email (default) and/or on Telegram, whichever are switched on in the sidebar.
 // ---------------------------------------------------------------------------
 function sendReport(done, waiting) {
-  return Promise.all([sendsTo('email') && emailReport(done, waiting), sendsTo('whatsapp') && whatsappReport(done, waiting)]);
+  return Promise.all([sendsTo('email') && emailReport(done, waiting), sendsTo('telegram') && telegramReport(done, waiting)]);
 }
 
-// WhatsApp: one crisp summary, then Approve / Hold / Reject buttons for each action that needs you.
+// Telegram: one crisp summary, then Approve / Hold / Reject buttons for each action that needs you.
 // The taps come back through our server; the page checks for them every few seconds.
-const WA_WHY = {
-  'not-configured': 'WhatsApp is not set up on the server yet',
-  'window-closed': 'send "hi" to the Drishti WhatsApp number once, then run again',
-  'number-not-verified': 'this number is not on the WhatsApp test list yet',
-  'token-expired': 'WhatsApp access has expired on the server',
+const TG_WHY = {
+  'not-configured': 'Telegram is not set up on the server yet',
+  'not-linked': 'tap "Connect Telegram" in the sidebar first',
+  'blocked': 'the Drishti bot was stopped in Telegram; connect it again',
 };
-async function whatsappReport(done, waiting) {
-  const to = $('#phone').value.replace(/\D/g, '');
+async function telegramReport(done, waiting) {
   if (!done.length && !waiting.length) return;
-  const mark = status => { for (const a of done) { state.wa[a.id] = status; updateRow(a); } };
-  if (to.length < 10) return mark({ ok: false, text: 'add your WhatsApp number (with country code) to get reports' });
-  if (state.offline) return mark({ ok: false, text: 'WhatsApp needs our server, which this network cannot reach' });
-  mark({ ok: false, text: 'sending to WhatsApp…' });
+  const mark = status => { for (const a of done) { state.tg[a.id] = status; updateRow(a); } };
+  const t = tgChat();
+  if (!t) return mark({ ok: false, text: TG_WHY['not-linked'] });
+  if (state.offline) return mark({ ok: false, text: 'Telegram needs our server, which this network cannot reach' });
+  mark({ ok: false, text: 'sending to Telegram…' });
   const r = state.result;
   let j = {};
   try {
-    const res = await fetch(API + '/api/whatsapp', {
+    const res = await fetch(API + '/api/telegram', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(20000),
       body: JSON.stringify({
-        to, brand: r.brand, runId: state.runId,
+        chat: t.chat, brand: r.brand, runId: state.runId,
         health: `${r.ahi.before.value} → ${r.ahi.after.value}`,
         done: done.map(a => a.feedback || a.title), doneCount: done.length,
         waiting: waiting.map(a => ({ id: a.id, agent: agentName(a.agent), title: a.recommend || a.title, impact: a.impact })),
       }),
     });
     j = await res.json();
-  } catch { j = { reason: 'WhatsApp service unreachable' }; }
-  const status = j.sent ? { ok: true, text: 'report sent on WhatsApp' } : { ok: false, text: WA_WHY[j.reason] || j.error || j.reason || 'WhatsApp not sent' };
+  } catch { j = { reason: 'Telegram service unreachable' }; }
+  const status = j.sent ? { ok: true, text: 'report sent on Telegram' } : { ok: false, text: TG_WHY[j.reason] || j.error || j.reason || 'Telegram not sent' };
   mark(status);
-  log(status.ok ? `Action report sent on WhatsApp${j.buttons ? ` with ${j.buttons} approval button${j.buttons === 1 ? '' : 's'}` : ''}` : `WhatsApp: ${status.text}`);
-  if (j.sent && j.buttons && j.store) pollWhatsapp();
+  log(status.ok ? `Action report sent on Telegram${j.buttons ? ` with ${j.buttons} approval button${j.buttons === 1 ? '' : 's'}` : ''}` : `Telegram: ${status.text}`);
+  if (j.sent && j.buttons) pollTelegram();
 }
 
-// Short one-line WhatsApp message (decisions made on the site); silent if WhatsApp isn't in use
-function whatsappNote(note) {
-  const to = $('#phone').value.replace(/\D/g, '');
-  if (!sendsTo('whatsapp') || to.length < 10 || state.offline) return;
-  fetch(API + '/api/whatsapp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, note }) }).catch(() => {});
+// Short one-line Telegram message (decisions made on the site); silent if Telegram isn't in use
+function telegramNote(note) {
+  const t = tgChat();
+  if (!sendsTo('telegram') || !t || state.offline) return;
+  fetch(API + '/api/telegram', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat: t.chat, note }) }).catch(() => {});
 }
 
-// Every 4 seconds (for up to 30 minutes), ask the server whether any WhatsApp button was tapped
-function pollWhatsapp() {
-  clearInterval(state.waPoll);
+// Every 4 seconds (for up to 30 minutes), ask the server whether any Telegram button was tapped
+function pollTelegram() {
+  clearInterval(state.tgPoll);
   const run = state.runId, until = Date.now() + 30 * 60 * 1000;
-  state.waPoll = setInterval(async () => {
+  state.tgPoll = setInterval(async () => {
     const open = state.result?.actions.filter(a => a.state === 'waiting') || [];
-    if (run !== state.runId || !open.length || Date.now() > until) return clearInterval(state.waPoll);
+    if (run !== state.runId || !open.length || Date.now() > until) return clearInterval(state.tgPoll);
     try {
-      const { decisions = {} } = await (await fetch(`${API}/api/whatsapp?run=${run}`)).json();
+      const { decisions = {} } = await (await fetch(`${API}/api/telegram?run=${run}&open=${open.map(a => a.id).join(',')}`)).json();
       for (const a of open) {
         const d = decisions[a.id];
-        if (d === 'approve' || d === 'reject') decide(a.id, d, 'whatsapp');
-        else if (d === 'hold' && !a.held) decide(a.id, 'hold', 'whatsapp');
+        if (d === 'approve' || d === 'reject') decide(a.id, d, 'telegram');
+        else if (d === 'hold' && !a.held) decide(a.id, 'hold', 'telegram');
       }
     } catch {}
   }, 4000);
@@ -1353,7 +1383,7 @@ const TIPS = {
       <div class="k">On a connected account</div><p>${esc(apiCall(a))}${sample ? ' <i>(sample brand: applied to the sample data)</i>' : ''}</p>
       <div class="k">Fed back into ①</div><p class="new">↺ ${esc(a.feedback || a.title)}</p>
       ${state.mail[a.id] ? `<div class="k">Email report</div><p>${state.mail[a.id].href ? `<a href="${esc(state.mail[a.id].href)}">${esc(state.mail[a.id].text)}</a>` : esc(state.mail[a.id].text)}</p>` : ''}
-      ${state.wa[a.id] ? `<div class="k">WhatsApp report</div><p>${esc(state.wa[a.id].text)}</p>` : ''}`;
+      ${state.tg[a.id] ? `<div class="k">Telegram report</div><p>${esc(state.tg[a.id].text)}</p>` : ''}`;
   },
   ahi() {
     const r = state.result; if (!r) return '';
@@ -1387,7 +1417,7 @@ const TIPS = {
   watch() {
     return `<h4>Always watching</h4><p>Between full checks the Orchestrator keeps reading the streams in ① and your rules. A full check (Run) re-reads everything, diagnoses, recommends and acts.</p><p style="color:var(--muted)">${nIN(rowsSeen)} rows read since you opened this page.</p>`;
   },
-  email() { return `<h4>${ic('chat')} Get the action reports yourself</h4><p><b>Email (on by default):</b> type your address and every run emails you what the agents did.</p><p><b>WhatsApp (switch it on):</b> type your number with the country code. After each run you get one short summary, and every action that needs you arrives with <b>Approve</b>, <b>Hold</b> and <b>Reject</b> buttons. Tap one and the card here updates within seconds.</p><p>With both switched on, every report goes to both.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">If you get a one-time “Activate” email, click it and run the loop again. If email services are down, the card shows a link that opens the report in your own email app.</p>`; },
+  email() { return `<h4>${ic('chat')} Get the action reports yourself</h4><p><b>Email (on by default):</b> type your address and every run emails you what the agents did.</p><p><b>Telegram (switch it on):</b> tap <b>Connect Telegram</b> and press <b>Start</b> in the Drishti bot. After each run you get one short summary, and every action that needs you arrives with <b>Approve</b>, <b>Hold</b> and <b>Reject</b> buttons. Tap one and the card here updates within seconds.</p><p>With both switched on, every report goes to both.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">If you get a one-time “Activate” email, click it and run the loop again. If email services are down, the card shows a link that opens the report in your own email app.</p>`; },
   // one line of the agents' feed, in full
   ev(el) {
     const a = agent(el.dataset.agent);

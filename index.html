@@ -86,15 +86,16 @@
       <a href="story.html"><span data-icon="book"></span>How it works</a>
     </nav>
 
-    <!-- Where action reports go: email (on by default) and/or WhatsApp. Visitors can type their own address / number. -->
+    <!-- Where action reports go: email (on by default) and/or Telegram. Visitors can type their own address / link their own Telegram. -->
     <div class="side-report">
       <div class="side-k">Action reports to <button type="button" class="info" data-tip="email" aria-label="About action reports"><span data-icon="info"></span></button></div>
       <div class="via" role="group" aria-label="Send action reports by">
         <button type="button" role="switch" data-via="email" aria-checked="true"><span data-icon="mail"></span>Email</button>
-        <button type="button" role="switch" data-via="whatsapp" aria-checked="false"><span data-icon="chat"></span>WhatsApp</button>
+        <button type="button" role="switch" data-via="telegram" aria-checked="false"><span data-icon="send"></span>Telegram</button>
       </div>
       <span class="email-wrap" id="emailWrap"><input class="field email" id="email" type="email" placeholder="Type your email address" value="mayankmalviya64@gmail.com" aria-label="Email address for action reports (replace with yours)"><span class="pen" data-icon="mail" aria-hidden="true"></span></span>
-      <span class="email-wrap" id="phoneWrap" hidden><input class="field email" id="phone" type="tel" placeholder="WhatsApp no. with country code" aria-label="WhatsApp number for action reports, with country code"><span class="pen" data-icon="chat" aria-hidden="true"></span></span>
+      <!-- Telegram: one tap opens the bot; once the visitor presses Start there, this shows who is linked -->
+      <div class="tg-wrap" id="tgWrap" hidden><button type="button" class="tg-link" id="tgLink"><span data-icon="send"></span><span id="tgText">Connect Telegram</span></button></div>
     </div>
 
     <div class="side-foot">
@@ -311,7 +312,7 @@
     <div class="tabpane" id="tab-settings">
       <label class="row-field">Break-even true ROAS <input class="field tiny" id="breakeven" type="number" step="0.1" min="0.5" value="2.0"></label>
       <input class="field" id="webhook" placeholder="Slack or Discord webhook (optional)">
-      <p class="hint">Approvals and rejections are posted here, like the deck's Slack/WhatsApp inbox.</p>
+      <p class="hint">Approvals and rejections are posted here, like a team approvals inbox.</p>
     </div>
     <div class="data-status" id="dataStatus">Loading sample…</div>
   </div>
