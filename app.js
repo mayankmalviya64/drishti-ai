@@ -9,6 +9,7 @@
 import { makeSample, toCSV } from './lib/sample.js';
 import { cleanRows, cleanOrders, cleanCompetitors, EVENTS } from './lib/analyze.js';
 import { RULE_TYPES, DEFAULT_RULES, cleanRule, ruleText } from './lib/rules.js';
+import { SCENARIOS, scenariosFor, applyScenario, scenarioContext } from './lib/scenarios.js';
 
 // When the page is opened from GitHub Pages, talk to the Vercel backend.
 const API = location.hostname.endsWith('github.io') ? 'https://drishti-ai-mvp.vercel.app' : '';
@@ -209,7 +210,7 @@ document.addEventListener('click', e => {
 // in from the right. Only one is open at a time; the dark scrim behind closes it.
 // On phones the sidebar slides in from the left the same way.
 // ---------------------------------------------------------------------------
-const SHEETS = ['#rulesPanel', '#ownData', '#aboutPanel', '#agentsPanel', '#drawer'];
+const SHEETS = ['#rulesPanel', '#ownData', '#aboutPanel', '#agentsPanel', '#drawer', '#whatIf'];
 function openSheet(sel) {
   closeSheets(sel);
   const el = $(sel);
@@ -220,6 +221,7 @@ function openSheet(sel) {
   $('#scrim').classList.add('open');
   $('#ownBtn').setAttribute('aria-expanded', String(sel === '#ownData'));
   $('#rulesBtn').setAttribute('aria-expanded', String(sel === '#rulesPanel'));
+  $('#whatIfBtn').setAttribute('aria-expanded', String(sel === '#whatIf'));
 }
 function closeSheets(except) {
   for (const sel of SHEETS) {
@@ -286,13 +288,31 @@ function describe(d) {
     (d.connected?.length ? `<br><small>Connected: ${esc(d.connected.join(' · '))}</small>` : '');
 }
 
+// A brand's sample data under one condition (normal, or a what-if event)
+function sampleFor(brand, scenarioKey = 'normal') {
+  const s = makeSample(brand, { twists: SCENARIOS[scenarioKey]?.twists || {} });
+  return applyScenario({ ...s, source: 'Sample' }, scenarioKey, brand);
+}
 function loadSample() {
   const brand = $('input[name=brand]:checked').value;
-  const s = makeSample(brand, { twists: { pixelBreak: $('#twistPixel').checked, marketShock: $('#twistShock').checked } });
-  setData({ ...s, source: 'Sample' });
+  fillScenarios(brand);
+  setData({ ...sampleFor(brand, $('#scenario').value), brandKey: brand, scenario: $('#scenario').value });
 }
-// Picking another brand or twist: load that brand's data, then ask you to start the agents on it
-$$('input[name=brand], #twistPixel, #twistShock').forEach(el => el.onchange = () => { loadSample(); askToStart(); });
+
+// The Conditions picker: "Normal conditions" first, then the what-if events that fit this brand
+function fillScenarios(brand) {
+  const pick = $('#scenario'), was = pick.value || 'normal';
+  const list = scenariosFor(brand), groups = [...new Set(list.map(x => x.group))];
+  pick.innerHTML = groups.map(g => g === 'Base'
+    ? list.filter(x => x.group === g).map(x => `<option value="${x.key}">${esc(x.label)}</option>`).join('')
+    : `<optgroup label="${esc(g)}">${list.filter(x => x.group === g).map(x => `<option value="${x.key}">${esc(x.label)}</option>`).join('')}</optgroup>`).join('');
+  pick.value = list.some(x => x.key === was) ? was : 'normal';
+  pick.title = SCENARIOS[pick.value].note;
+  pick.closest('.cond').classList.toggle('active', pick.value !== 'normal');
+}
+
+// Picking another brand or condition: load that data, then ask you to start the agents on it
+$$('input[name=brand], #scenario').forEach(el => el.onchange = () => { loadSample(); askToStart(); });
 
 // Minimal CSV parser (handles quotes, commas inside quotes, BOM, \r\n)
 function parseCSV(text) {
@@ -502,13 +522,14 @@ remember('#email', 'drishti-email');
 // Email is on by default, Telegram is optional, and with both on every report goes to both.
 const sendsTo = via => $(`.via [data-via="${via}"]`).getAttribute('aria-checked') === 'true';
 function setChannels(on) {
-  $$('.via button').forEach(b => b.setAttribute('aria-checked', String(on.includes(b.dataset.via))));
-  $('#emailWrap').hidden = !on.includes('email');
-  $('#tgWrap').hidden = !on.includes('telegram');
+  $$('.via [role=switch]').forEach(b => {
+    b.setAttribute('aria-checked', String(on.includes(b.dataset.via)));
+    b.closest('.via-row').classList.toggle('off', !on.includes(b.dataset.via)); // greys out a channel that is off
+  });
   store.set('drishti-channels', on.join(','));
 }
-$$('.via button').forEach(b => b.onclick = () => {
-  const on = $$('.via button').filter(x => (x === b) !== (x.getAttribute('aria-checked') === 'true')).map(x => x.dataset.via);
+$$('.via [role=switch]').forEach(b => b.onclick = () => {
+  const on = $$('.via [role=switch]').filter(x => (x === b) !== (x.getAttribute('aria-checked') === 'true')).map(x => x.dataset.via);
   setChannels(on);
 });
 setChannels((store.get('drishti-channels') ?? 'email').split(',').filter(Boolean));
@@ -518,10 +539,32 @@ setChannels((store.get('drishti-channels') ?? 'email').split(',').filter(Boolean
 // The chat id is remembered on this device only.
 const TG_BOT = 'drishti_phoenix_bot';
 const tgChat = () => JSON.parse(store.get('drishti-tg') || 'null');
+// Shows the linked number (if they shared it in Telegram), otherwise their Telegram name
 function showTg() {
   const t = tgChat();
-  $('#tgText').textContent = t ? `Linked: ${t.name} · change` : 'Connect Telegram';
+  $('#tgText').textContent = t ? (t.phone ? prettyPhone(t.phone) : t.name) : 'Connect Telegram';
+  $('#tgLink').title = t ? `Linked to ${t.name}${t.phone ? ` (${prettyPhone(t.phone)})` : ''}. Click to link again.` : 'Open the Drishti bot in Telegram';
   $('#tgLink').classList.toggle('linked', !!t);
+}
+// "+919009601598" → "+91 90096 01598"
+function prettyPhone(p) {
+  const d = String(p).replace(/\D/g, '');
+  return d.length === 12 && d.startsWith('91') ? `+91 ${d.slice(2, 7)} ${d.slice(7)}` : '+' + d;
+}
+// After linking, the bot offers a "Share my number" button; listen for it for 2 minutes
+function waitForPhone(chat) {
+  const until = Date.now() + 2 * 60 * 1000;
+  clearInterval(state.tgPhonePoll);
+  state.tgPhonePoll = setInterval(async () => {
+    if (Date.now() > until) return clearInterval(state.tgPhonePoll);
+    try {
+      const j = await (await fetch(`${API}/api/telegram?phone=${chat}`)).json();
+      if (!j.phone) return;
+      clearInterval(state.tgPhonePoll);
+      store.set('drishti-tg', JSON.stringify({ ...tgChat(), phone: j.phone }));
+      showTg();
+    } catch {}
+  }, 3000);
 }
 $('#tgLink').onclick = () => {
   const code = Math.random().toString(36).slice(2, 10);
@@ -538,6 +581,7 @@ $('#tgLink').onclick = () => {
       store.set('drishti-tg', JSON.stringify({ chat: j.chat, name: j.name }));
       showTg();
       log(`Telegram linked for ${j.name}`);
+      waitForPhone(j.chat);
     } catch {}
   }, 3000);
 };
@@ -599,6 +643,94 @@ $('#addRule').onclick = () => {
 };
 $('#resetRules').onclick = () => { state.rules = DEFAULT_RULES.map(r => ({ ...r })); saveRules(); renderRules(); };
 $('#rulesBtn').onclick = () => (isOpen('#rulesPanel') ? closeSheets() : openSheet('#rulesPanel'));
+
+// ---------------------------------------------------------------------------
+// WHAT-IF SCENARIOS: run the agents once per condition (in this browser, with the
+// built-in rules engine, so no AI tokens) and compare what they would do.
+// ---------------------------------------------------------------------------
+$('#whatIfBtn').onclick = () => {
+  if (isOpen('#whatIf')) return closeSheets();
+  $('#wiBrand').textContent = state.data?.brand || 'this brand';
+  openSheet('#whatIf');
+};
+async function runWhatIf() {
+  const btn = $('#wiRun'), d = state.data;
+  if (!d?.rows?.length) return;
+  btn.disabled = true; btn.textContent = 'Running every scenario…';
+  $('#wiAskWrap').hidden = true; $('#wiAnswer').textContent = '';
+  const { runDrishti } = await import('./lib/agent.js');
+  const sample = d.source === 'Sample';
+  // Your own data: only the market events can be applied (data-problem twists need the sample generator)
+  const list = scenariosFor(sample ? d.brandKey : null).filter(x => sample || !x.twists);
+  const out = [];
+  for (const sc of list) {
+    $('#wiTable').innerHTML = `<p class="hint">Running: ${esc(sc.label)} (${out.length + 1} of ${list.length})…</p>`;
+    const data = sample ? sampleFor(d.brandKey, sc.key) : applyScenario(d, sc.key, null);
+    let r = null;
+    await runDrishti({ brand: d.brand, category: d.category, rows: data.rows, orders: data.orders, competitors: data.competitors || [],
+      breakevenRoas: Number($('#breakeven').value) || 2, rules: state.rules, model: 'rules', scenario: scenarioContext(sc.key) },
+      e => { if (e.type === 'result') r = e; });
+    if (!r) continue;
+    const auto = r.actions.filter(a => a.tier === 'auto'), ask = r.actions.filter(a => a.tier === 'approval');
+    const top = [...r.actions].sort((a, b) => (b.impact || 0) - (a.impact || 0))[0];
+    // Remember each action as "title + whether it ran or waits", to spot what changes vs normal
+    const moves = r.actions.map(a => ({ title: a.title, tier: a.tier }));
+    out.push({ moves, key: sc.key, label: sc.label, note: sc.note, health: r.ahi.after.value, healthBefore: r.ahi.before.value,
+      roasNow: r.impact.trueRoasNow, roasNext: r.impact.trueRoasProjected, freed: r.impact.freedPerDay, extra: r.impact.extraRevenuePerDay,
+      auto: auto.length, ask: ask.length, storm: !!r.shock?.external, top: top ? top.title : '—' });
+  }
+  state.whatIf = { brand: d.brand, rows: out };
+  const base = out.find(x => x.key === 'normal') || out[0];
+  // What the agents do differently from normal: new moves, and moves that now wait for approval
+  // Same move with different numbers ("seen 5.2×" vs "seen 5.6×") counts as the same move
+  const same = t => t.replace(/[₹+\-−]?[\d.,]+[%×]?/g, '#');
+  const baseMoves = new Map(base.moves.map(m => [same(m.title), m.tier]));
+  for (const x of out) {
+    const fresh = x.moves.filter(m => !baseMoves.has(same(m.title))).map(m => m.title);
+    const nowAsk = x.moves.filter(m => baseMoves.get(same(m.title)) === 'auto' && m.tier === 'approval').length;
+    const dropped = base.moves.filter(m => !x.moves.some(y => same(y.title) === same(m.title))).length;
+    x.diff = x.key === 'normal' ? `Biggest move: ${x.top}`
+      : [fresh.length && `New: ${fresh.slice(0, 2).join('; ')}${fresh.length > 2 ? ` (+${fresh.length - 2} more)` : ''}`,
+         nowAsk && `${nowAsk} move${nowAsk === 1 ? '' : 's'} now wait for your OK`,
+         dropped && `${dropped} normal move${dropped === 1 ? '' : 's'} no longer needed`].filter(Boolean).join(' · ') || 'Same moves as normal';
+  }
+  for (const x of out) delete x.moves; // keep the table data small for "Ask the agent"
+  const delta = (v, b) => { const x = Math.round((v - b) * 100) / 100; return !b || !x ? '' : `<small class="${x > 0 ? 'up' : 'down'}">${x > 0 ? '+' : ''}${x}</small>`; };
+  $('#wiTable').innerHTML = `<table>
+    <tr><th>Condition</th><th>True ROAS today</th><th>Health after fixes</th><th>Done now · need you</th><th>What the agents do differently</th><th></th></tr>
+    ${out.map(x => `<tr class="${x.key === 'normal' ? 'base' : ''}">
+      <td><b>${esc(x.label)}</b>${x.storm ? ' <span class="badge wait">Storm Mode</span>' : ''}<br><small>${esc(x.note)}</small></td>
+      <td>${x.roasNow} ${x.key === 'normal' ? '' : delta(x.roasNow, base.roasNow)}<br><small>→ ${x.roasNext} after</small></td>
+      <td>${x.health} <small>(was ${x.healthBefore})</small></td>
+      <td>${x.auto} · ${x.ask}</td>
+      <td><small>${esc(cut(x.diff, 220))}</small></td>
+      <td><button type="button" class="mini" data-load="${x.key}" ${sample ? '' : 'hidden'}>Load</button></td></tr>`).join('')}
+  </table>
+  <p class="hint">“Load” switches the live loop to that condition, so you can run it for real (with reports).</p>`;
+  $$('#wiTable [data-load]').forEach(b => b.onclick = () => {
+    $('#scenario').value = b.dataset.load; loadSample(); closeSheets(); askToStart();
+  });
+  $('#wiAskWrap').hidden = false;
+  btn.disabled = false; btn.innerHTML = `${ic('loop')}Run all scenarios again`;
+}
+$('#wiRun').onclick = runWhatIf;
+
+// Ask the agent about the comparison (this one uses AI tokens)
+$('#wiAskForm').onsubmit = async ev => {
+  ev.preventDefault();
+  const out = $('#wiAnswer'), q = $('#wiAsk').value.trim();
+  if (!q || !state.whatIf) return;
+  if (state.offline) { out.textContent = 'Questions need our server, which this network cannot reach right now.'; return; }
+  out.innerHTML = '<span class="typing">Thinking</span>';
+  try {
+    const res = await fetch(API + '/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({ question: q, context: { brand: state.whatIf.brand, whatIfScenarios: state.whatIf.rows,
+        note: 'Each row is the same brand under a hypothetical condition. roasNow = true ROAS before fixes, roasNext = after the agents act, health = agent health index after fixes, auto/ask = actions done on their own / waiting for approval, storm = Storm Mode (big moves wait for a human).' } }) });
+    const j = await res.json();
+    out.textContent = j.answer || j.error || 'No answer came back. Please try again.';
+    trackAI(j.usage, 'ask');
+  } catch (e) { out.textContent = e.name === 'TimeoutError' ? 'The AI took too long. Please try again.' : 'Could not reach the Orchestrator. ' + e.message; }
+};
 loadRules();
 renderRules();
 
@@ -902,8 +1034,10 @@ async function showEvent(e) {
     }
   } else if (e.type === 'result') {
     state.result = e;
+    trackAI(e.ai, 'run');
     const nAuto = e.actions.filter(a => a.tier === 'auto').length, nAsk = e.actions.filter(a => a.tier === 'approval').length;
-    addFeed(`<span class="tag">Done</span><span class="txt">Finished${e.seconds >= 1 ? ` in ${e.seconds}s` : ''}. ${e.actions.length} recommendations: ${nAuto} carried out now, ${nAsk} wait for you ↓</span>`, 'final', 'P5');
+    const used = e.ai?.tokens ? ` · used ${kTok(e.ai.tokens)} AI tokens` : ' · no AI tokens used';
+    addFeed(`<span class="tag">Done</span><span class="txt">Finished${e.seconds >= 1 ? ` in ${e.seconds}s` : ''}. ${e.actions.length} recommendations: ${nAuto} carried out now, ${nAsk} wait for you${used} ↓</span>`, 'final', 'P5');
     renderResults(e);
     renderDetails(e);
     await playActions(e);
@@ -924,7 +1058,7 @@ async function run() {
   const btn = $('#runBtn');
   btn.disabled = true; btn.classList.remove('idle'); btn.innerHTML = 'Agent running…';
   // No switching brand or twist mid-run (the results would belong to the old data)
-  $$('input[name=brand], #twistPixel, #twistShock').forEach(el => el.disabled = true);
+  $$('input[name=brand], #scenario').forEach(el => el.disabled = true);
   state.result = null;   // so the boxes start from step ① again
   $('#feed').innerHTML = '';
   renderStrip();
@@ -943,7 +1077,8 @@ async function run() {
     try {
       const body = { brand: state.data.brand, category: state.data.category, rows: state.data.rows, orders: state.data.orders,
         competitors: state.data.competitors || [], breakevenRoas: Number($('#breakeven').value) || 2,
-        rules: state.rules, model: $('#modelPick').value || undefined };
+        rules: state.rules, model: $('#modelPick').value || undefined,
+        scenario: state.data.source === 'Sample' ? scenarioContext(state.data.scenario) : null };
       // Backend known to be unreachable → go straight to the on-device run
       if (state.offline) return await runHere(body, queue);
       // Give the server 10 seconds to start answering; after that, run here instead
@@ -977,7 +1112,7 @@ async function run() {
   setFlowing(false);
   state.running = false;
   btn.disabled = false; btn.innerHTML = `${ic('loop')}Run again`;
-  $$('input[name=brand], #twistPixel, #twistShock').forEach(el => el.disabled = false);
+  $$('input[name=brand], #scenario').forEach(el => el.disabled = false);
   hubIdle();
   watchLine('<b>Back to watching</b> · the next full check re-reads everything the agents just changed');
 }
@@ -1008,12 +1143,13 @@ function resetLoop() {
 // Nothing runs (and no email or Telegram goes out) until you press it.
 function askToStart() {
   if (state.running) return;
-  const d = state.data, twists = [$('#twistPixel').checked && 'pixel breaks', $('#twistShock').checked && 'market shock'].filter(Boolean);
+  const d = state.data, sc = d.scenario && d.scenario !== 'normal' ? SCENARIOS[d.scenario] : null;
   $('#startPrompt')?.remove();
   $('#loop').insertAdjacentHTML('beforeend', `<div class="start-prompt" id="startPrompt" role="dialog" aria-label="Start the agent">
     <p class="sp-k">Now on</p>
     <h3>${esc(d.brand)}</h3>
-    <p>${d.clean.length.toLocaleString('en-IN')} ad rows from ${new Set(d.clean.map(r => r.channel)).size} channels${d.orders?.length ? `, ${d.orders.length.toLocaleString('en-IN')} orders` : ''}${twists.length ? ` · twist: ${twists.join(' + ')}` : ''}. The agents have not checked this brand yet.</p>
+    <p>${d.clean.length.toLocaleString('en-IN')} ad rows from ${new Set(d.clean.map(r => r.channel)).size} channels${d.orders?.length ? `, ${d.orders.length.toLocaleString('en-IN')} orders` : ''}. ${sc ? '' : 'The agents have not checked this brand yet.'}</p>
+    ${sc ? `<p class="sp-sc"><b>${esc(sc.label)}</b> (hypothetical)<br>${esc(sc.note)}</p>` : ''}
     <button type="button" class="btn" id="startHere">${ic('play')}Start the agent for ${esc(d.brand)}</button>
   </div>`);
   $('#startHere').onclick = run;
@@ -1382,6 +1518,35 @@ function renderResults(r) {
 const glimpseRows = (list, cols) => `<table><tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr>${list.map(r => `<tr>${cols.map(c => `<td class="${c[2] || ''}">${esc(c[1](r))}</td>`).join('')}</tr>`).join('')}</table>`;
 const fedBlock = key => (state.updates[key]?.length ? `<div class="k">Fed back after actions</div><ul>${state.updates[key].slice(0, 4).map(u => `<li class="new">↺ ${esc(u)}</li>`).join('')}</ul>` : '');
 
+// ---------------------------------------------------------------------------
+// AI USAGE: every run and every question reports the tokens it used. We keep a
+// running total for today on this device, plus what Groq says is left of its free tier.
+// ---------------------------------------------------------------------------
+const kTok = n => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
+function aiToday() {
+  const today = new Date().toDateString();
+  let u = null; try { u = JSON.parse(store.get('drishti-ai-use') || 'null'); } catch {}
+  return u && u.day === today ? u : { day: today, tokens: 0, runs: 0, asks: 0, lastRun: 0, limits: null };
+}
+function trackAI(ai, kind) {
+  const u = aiToday();
+  const tokens = ai?.tokens || 0;
+  if (kind === 'run') { u.runs++; u.lastRun = tokens; } else u.asks++;
+  u.tokens += tokens;
+  const last = ai?.last || ai; // a run sends { tokens, calls, last: {limits…} }; a question sends the limits directly
+  if (last?.requestsLeftToday != null) u.limits = { provider: last.provider, model: last.model, left: last.requestsLeftToday, perDay: last.requestsPerDay, tpm: last.tokensPerMinute, tpmLeft: last.tokensLeftThisMinute };
+  store.set('drishti-ai-use', JSON.stringify(u));
+  renderAI();
+}
+function renderAI() {
+  const u = aiToday(), L = u.limits;
+  $('#aiUseBody').innerHTML = !u.runs && !u.asks ? 'No AI calls yet today'
+    : `<b>${kTok(u.tokens)}</b> tokens today <small>(${u.runs} run${u.runs === 1 ? '' : 's'} · ${u.asks} question${u.asks === 1 ? '' : 's'})</small>` +
+      `<br><small>Last run: ${u.lastRun ? kTok(u.lastRun) + ' tokens' : 'no AI (rules engine)'}</small>` +
+      (L ? `<br><small>${esc(L.provider)} free tier: <b>${nIN(L.left)}</b> of ${nIN(L.perDay)} requests left today</small>` : '');
+}
+renderAI();
+
 const TIPS = {
   src(el) {
     const key = el.dataset.key, d = state.data; if (!d) return '';
@@ -1470,6 +1635,14 @@ const TIPS = {
   model() {
     return `<h4>The model the agents think with</h4><p>It is always on: the Orchestrator uses it to decide which agent to call and to explain each step. Pick another model to swap it for the next run; if it is busy, Drishti falls back to the next one.</p>
       <p>“Built-in rules” runs the same agent maths with no AI model, so every number can be traced to a formula.</p>`;
+  },
+  tokens() {
+    const u = aiToday(), L = u.limits;
+    return `<h4>${ic('sparkles')} AI usage</h4>
+      <p><b>Yes, every run uses tokens</b>, not only “Ask the agent”. In a run the Orchestrator reasons between agent calls and the Creative Studio writes new ads, so one run is usually several AI calls. Each question to “Ask the agent” is one more call. The What-if panel and the “Built-in rules” model use no tokens at all.</p>
+      <div class="k">Today on this device</div><p>${nIN(u.tokens)} tokens · ${u.runs} run(s) · ${u.asks} question(s)${u.lastRun ? ` · last run ${nIN(u.lastRun)} tokens` : ''}</p>
+      ${L ? `<div class="k">${esc(L.provider)} · ${esc(L.model)}</div><p>${nIN(L.left)} of ${nIN(L.perDay)} requests left today${L.tpm ? `; ${nIN(L.tpmLeft)} of ${nIN(L.tpm)} tokens left this minute` : ''}. The free tier also caps tokens per day per model and is shared by everyone using this site.</p>` : ''}
+      <p style="color:var(--muted)">When a model runs out, Drishti switches to the next model, and if all are out, to the built-in rules engine, so the demo never stops. Limits reset daily.</p>`;
   },
   watch() {
     return `<h4>Always watching</h4><p>Between full checks the Orchestrator keeps reading the streams in ① and your rules. A full check (Run) re-reads everything, diagnoses, recommends and acts.</p><p style="color:var(--muted)">${nIN(rowsSeen)} rows read since you opened this page.</p>`;
@@ -1635,6 +1808,7 @@ async function ask(ev) {
       body: JSON.stringify({ question: q, context }), signal: AbortSignal.timeout(30000) });
     const j = await res.json();
     out.textContent = j.answer || j.error || 'No answer came back. Please try again.';
+    trackAI(j.usage, 'ask');
   } catch (e) {
     out.textContent = e.name === 'TimeoutError' ? 'The AI took too long to answer. Please try again in a moment.' : 'Could not reach the Orchestrator. ' + e.message;
   } finally { btn.disabled = false; }

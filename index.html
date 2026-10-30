@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Noto+Sans:wght@400;600&family=Noto+Sans+Tamil:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
 <!-- Favicon: the Drishti eye on a red → orange tile -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23D7261E'/%3E%3Cstop offset='1' stop-color='%23F26B1D'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M5 16c3-5 6.7-7.5 11-7.5S24 11 27 16c-3 5-6.7 7.5-11 7.5S8 21 5 16Z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Ccircle cx='16' cy='16' r='3.6' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="app.css?v=20261029b">
+<link rel="stylesheet" href="app.css?v=20261030a">
 <script>
   // Light mode by default; restore dark mode if the visitor chose it before.
   try { if (localStorage.getItem('drishti-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
@@ -75,6 +75,7 @@
       <a href="#results"><span data-icon="gauge"></span>Results</a>
       <a href="#details"><span data-icon="layers"></span>Reasoning</a>
       <a href="#askCard"><span data-icon="chat"></span>Ask the agent</a>
+      <button type="button" id="whatIfBtn" aria-expanded="false" aria-controls="whatIf"><span data-icon="compass"></span>What-if scenarios</button>
 
       <div class="side-k">Setup</div>
       <button type="button" id="ownBtn" aria-expanded="false" aria-controls="ownData"><span data-icon="db"></span>Connect data</button>
@@ -89,13 +90,26 @@
     <!-- Where action reports go: email (on by default) and/or Telegram. Visitors can type their own address / link their own Telegram. -->
     <div class="side-report">
       <div class="side-k">Action reports to <button type="button" class="info" data-tip="email" aria-label="About action reports"><span data-icon="info"></span></button></div>
+      <!-- One line per channel: on/off switch, then where it goes, with a pen to edit -->
       <div class="via" role="group" aria-label="Send action reports by">
-        <button type="button" role="switch" data-via="email" aria-checked="true"><span data-icon="mail"></span>Email</button>
-        <button type="button" role="switch" data-via="telegram" aria-checked="false"><span data-icon="send"></span>Telegram</button>
+        <div class="via-row">
+          <button type="button" role="switch" data-via="email" aria-checked="true" aria-label="Email reports on/off"><i></i></button>
+          <span class="via-k"><span data-icon="mail"></span>Email</span>
+          <label class="via-v" id="emailWrap"><input id="email" type="email" placeholder="Type your email address" value="mayankmalviya64@gmail.com" aria-label="Email address for action reports (replace with yours)"><span class="pen" aria-hidden="true">✎</span></label>
+        </div>
+        <div class="via-row">
+          <button type="button" role="switch" data-via="telegram" aria-checked="false" aria-label="Telegram reports on/off"><i></i></button>
+          <span class="via-k"><span data-icon="send"></span>Telegram</span>
+          <!-- one tap opens the bot; after Start (and sharing the number) this shows who is linked -->
+          <button type="button" class="via-v" id="tgLink"><span id="tgText">Connect Telegram</span><span class="pen" aria-hidden="true">✎</span></button>
+        </div>
       </div>
-      <span class="email-wrap" id="emailWrap"><input class="field email" id="email" type="email" placeholder="Type your email address" value="mayankmalviya64@gmail.com" aria-label="Email address for action reports (replace with yours)"><span class="pen" data-icon="mail" aria-hidden="true"></span></span>
-      <!-- Telegram: one tap opens the bot; once the visitor presses Start there, this shows who is linked -->
-      <div class="tg-wrap" id="tgWrap" hidden><button type="button" class="tg-link" id="tgLink"><span data-icon="send"></span><span id="tgText">Connect Telegram</span></button></div>
+    </div>
+
+    <!-- AI usage: tokens the agents and "Ask the agent" used, and what the free tier still allows today -->
+    <div class="side-report ai-use" id="aiUse" data-tip="tokens" tabindex="0">
+      <div class="side-k">AI usage <button type="button" class="info" data-tip="tokens" aria-label="About AI usage"><span data-icon="info"></span></button></div>
+      <div id="aiUseBody" class="ai-use-body">No AI calls yet</div>
     </div>
 
     <div class="side-foot">
@@ -117,10 +131,10 @@
           <label title="Indore spices · ₹40 L/month · fictional"><input type="radio" name="brand" value="shyamlal"><span>Shyamlal Masale</span></label>
         </div>
       </div>
+      <!-- Conditions: normal by default; pick a what-if event and the brand's data changes to match -->
       <div class="ctl twists">
-        <span class="ctl-label">Twist</span>
-        <label class="chip"><input type="checkbox" id="twistPixel"><span>Pixel breaks</span></label>
-        <label class="chip"><input type="checkbox" id="twistShock"><span>Market shock</span></label>
+        <span class="ctl-label">Conditions</span>
+        <label class="cond"><span data-icon="storm"></span><select id="scenario" aria-label="Market conditions for this run"></select></label>
       </div>
       <button class="btn run" id="runBtn"><span data-icon="play"></span>Run the agent</button>
     </header>
@@ -243,6 +257,23 @@
   </div>
 </aside>
 
+<!-- What-if: run the agents on every condition for this brand and compare -->
+<aside class="sheet wide" id="whatIf" hidden aria-label="What-if scenarios">
+  <div class="sheet-head"><h3>What-if scenarios</h3><button type="button" class="icon-btn" data-close aria-label="Close"><span data-icon="x"></span></button></div>
+  <div class="sheet-body">
+    <p class="hint">The agents run once on every condition for <b id="wiBrand">this brand</b> and you see what they would do in each. This uses the built-in rules engine, so it costs no AI tokens. Only “Ask the agent” below uses tokens. All events are hypothetical.</p>
+    <button class="btn" id="wiRun" type="button"><span data-icon="play"></span>Run all scenarios</button>
+    <div id="wiTable" class="wi-table"></div>
+    <div id="wiAskWrap" hidden>
+      <form id="wiAskForm" class="ask">
+        <input class="field" id="wiAsk" value="Which scenario hurts us most, and what should we prepare now?" aria-label="Question about the scenarios">
+        <button class="btn" type="submit">Ask the agent</button>
+      </form>
+      <div id="wiAnswer" class="answer"></div>
+    </div>
+  </div>
+</aside>
+
 <!-- Your own data -->
 <aside class="sheet wide" id="ownData" hidden aria-label="Connect your data">
   <div class="sheet-head"><h3>Connect your data</h3><button type="button" class="icon-btn" data-close aria-label="Close"><span data-icon="x"></span></button></div>
@@ -336,6 +367,6 @@
   <div class="sheet-body tipbody" id="drawerBody"></div>
 </aside>
 
-<script type="module" src="app.js?v=20261029b"></script>
+<script type="module" src="app.js?v=20261030a"></script>
 </body>
 </html>

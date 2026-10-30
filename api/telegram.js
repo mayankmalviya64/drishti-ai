@@ -7,6 +7,7 @@
 //     POST from the page  { chat, note } → sends one short line (e.g. "Approved on the site: …").
 //  2. GET ?link=<code>  → the visitor opened t.me/<bot>?start=<code>; we find their chat and return its id.
 //  3. GET ?run=<runId>&open=1,2,3 → "any buttons tapped for these actions yet?"
+//  4. GET ?phone=<chatId> → did this chat tap "Share my number"? (so the site can show the number)
 //
 // No database: we never set a Telegram webhook, so Telegram keeps new messages and button
 // taps for us, and we read them with getUpdates whenever the page asks.
@@ -67,8 +68,21 @@ export async function GET(request) {
       const hit = (await updates()).find(u => u.message?.text === `/start ${code}`);
       if (!hit) return json({ linked: false });
       const { chat, from } = hit.message;
-      await say(chat.id, '✅ <b>Linked to Drishti AI.</b>\nAction reports will arrive here, with Approve / Hold / Reject buttons for the big moves.');
+      // Telegram never tells bots your number by itself, so offer a one-tap "Share my number" button
+      await say(chat.id, '✅ <b>Linked to Drishti AI.</b>\nAction reports will arrive here, with Approve / Hold / Reject buttons for the big moves.\n\nWant your number shown on the site? Tap the button below (optional).', {
+        reply_markup: { keyboard: [[{ text: '📱 Share my number', request_contact: true }]], resize_keyboard: true, one_time_keyboard: true },
+      });
       return json({ linked: true, chat: String(chat.id), name: from?.first_name || chat.title || 'you' });
+    }
+
+    // 4) Phone: the visitor shared their own contact card with the bot
+    const phoneChat = (q.get('phone') || '').replace(/[^\d-]/g, '').slice(0, 20);
+    if (phoneChat) {
+      const hit = (await updates()).find(u => String(u.message?.chat?.id) === phoneChat && u.message?.contact
+        && u.message.contact.user_id === u.message.from?.id); // only their OWN number, not a forwarded contact
+      if (!hit) return json({});
+      await say(phoneChat, '👍 Number saved on the Drishti site.', { reply_markup: { remove_keyboard: true } }).catch(() => {});
+      return json({ phone: hit.message.contact.phone_number.replace(/[^\d+]/g, '') });
     }
 
     // 3) Decisions: button taps for this run's still-open actions

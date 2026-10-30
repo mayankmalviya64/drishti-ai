@@ -166,17 +166,29 @@ html.in-app .app { display: grid; }
 .side-nav .count:empty { display: none; }
 .side-report { margin-top: 8px; padding: 0 4px; }
 .side-report .side-k { padding-left: 6px; }
-#emailWrap + #tgWrap { margin-top: 6px; }
-/* "Connect Telegram" button (turns green-ish once a chat is linked) */
-.tg-link { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px dashed var(--line-strong); background: var(--panel); color: var(--red-ink); border-radius: 9px; padding: 8px 10px; font: 600 12.5px Inter, sans-serif; cursor: pointer; }
-.tg-link svg { width: 14px; height: 14px; }
-.tg-link:hover { border-color: var(--orange); }
-.tg-link.linked { border-style: solid; color: var(--ink); }
-/* Email / Telegram switches above the address fields (each turns on and off by itself) */
-.via { display: flex; gap: 4px; margin: 0 0 6px; padding: 3px; background: var(--soft); border-radius: 9px; }
-.via button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; background: none; color: var(--muted); border-radius: 7px; padding: 5px 6px; font: 600 12px Inter, sans-serif; cursor: pointer; }
-.via button svg { width: 13px; height: 13px; }
-.via button[aria-checked="true"] { background: var(--panel); color: var(--red-ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+/* Action reports: one row per channel → [switch] Email / address ✎ */
+.via { display: grid; gap: 8px; padding: 0 2px; }
+.via-row { display: grid; grid-template-columns: 30px 1fr; grid-template-rows: auto auto; column-gap: 8px; row-gap: 2px; align-items: center; }
+.via-row [role=switch] { grid-row: 1; width: 28px; height: 16px; border-radius: 999px; border: 0; padding: 0; background: var(--line-strong); position: relative; cursor: pointer; transition: background .15s; }
+.via-row [role=switch] i { position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.via-row [role=switch][aria-checked="true"] { background: var(--red); }
+.via-row [role=switch][aria-checked="true"] i { transform: translateX(12px); }
+.via-row [role=switch]:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.via-k { grid-row: 1; display: inline-flex; align-items: center; gap: 5px; font: 600 12.5px Inter, sans-serif; color: var(--ink); }
+.via-k svg { width: 13px; height: 13px; color: var(--orange); }
+/* the address line under the label: plain text look, with a pen; click to edit */
+.via-v { grid-column: 2; display: flex; align-items: center; gap: 6px; min-width: 0; border: 0; border-bottom: 1px dashed var(--line-strong); background: none; padding: 3px 0; font: 12.5px Inter, sans-serif; color: var(--ink); cursor: text; text-align: left; }
+.via-v input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: inherit; padding: 0; outline: none; text-overflow: ellipsis; }
+.via-v:focus-within, .via-v:hover { border-bottom-color: var(--orange); }
+button.via-v { cursor: pointer; }
+button.via-v span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.via-v .pen { color: var(--orange); font-size: 13px; flex: none; }
+#tgLink:not(.linked) { color: var(--red-ink); font-weight: 600; }
+.via-row.off .via-k, .via-row.off .via-v { opacity: .45; }
+/* AI usage block */
+.ai-use { cursor: pointer; }
+.ai-use-body { padding: 0 10px; font-size: 12px; line-height: 1.6; color: var(--ink); }
+.ai-use-body small { color: var(--muted); font-size: 11.5px; }
 .side-foot { margin-top: auto; padding: 14px 6px 0; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .side-foot .icon-btn { margin-left: auto; }
 .side-foot .team { width: 100%; display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--orange-ink); }
@@ -192,6 +204,14 @@ html.in-app .app { display: grid; }
 .bar.hide { transform: translateY(-100%); }
 .menu { display: none; }
 .ctl { display: flex; align-items: center; gap: 8px; }
+/* Conditions picker in the top bar (lights up when a what-if event is picked) */
+.cond { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); background: var(--panel); border-radius: 999px; padding: 4px 6px 4px 10px; cursor: pointer; }
+.cond svg { width: 14px; height: 14px; color: var(--muted); }
+.cond select { border: 0; background: transparent; font: 600 12.5px Inter, sans-serif; color: var(--ink); cursor: pointer; max-width: 240px; text-overflow: ellipsis; }
+.cond select:focus-visible { outline: 2px solid var(--orange); border-radius: 6px; }
+.cond.active { border-color: var(--red); background: var(--accent-soft); }
+.cond.active svg, .cond.active select { color: var(--red-ink); }
+.cond select:disabled { opacity: .5; cursor: not-allowed; }
 .ctl-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .seg { display: inline-flex; background: var(--soft); border: 1px solid var(--line); border-radius: 11px; padding: 3px; }
 .seg input, .chip input { position: absolute; opacity: 0; pointer-events: none; }
@@ -714,3 +734,15 @@ footer.foot { text-align: center; font-size: 12px; color: var(--muted); padding:
 .start-prompt h3 { margin: 4px 0 8px; font-size: 22px; color: var(--red-ink); }
 .start-prompt p { margin: 0 0 16px; font-size: 13px; line-height: 1.5; color: var(--muted); }
 .start-prompt .btn { animation: glow 2.4s ease-in-out infinite; }
+
+.start-prompt .sp-sc { margin: -6px 0 16px; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); color: var(--ink); font-size: 12.5px; }
+/* What-if comparison table */
+.wi-table { margin-top: 14px; overflow-x: auto; }
+.wi-table table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.wi-table th { text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.wi-table td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.wi-table td small { color: var(--muted); }
+.wi-table tr.base td { background: var(--soft); }
+.wi-table small.up { color: var(--green); font-weight: 700; }
+.wi-table small.down { color: var(--red); font-weight: 700; }
+#wiAskWrap { margin-top: 14px; }
