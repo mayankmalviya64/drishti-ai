@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Noto+Sans:wght@400;600&family=Noto+Sans+Tamil:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
 <!-- Favicon: the Drishti eye on a red → orange tile -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23D7261E'/%3E%3Cstop offset='1' stop-color='%23F26B1D'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M5 16c3-5 6.7-7.5 11-7.5S24 11 27 16c-3 5-6.7 7.5-11 7.5S8 21 5 16Z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Ccircle cx='16' cy='16' r='3.6' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="app.css?v=20261030g">
+<link rel="stylesheet" href="app.css?v=20261030i">
 <script>
   // Light mode by default; restore dark mode if the visitor chose it before.
   try { if (localStorage.getItem('drishti-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
@@ -300,17 +300,18 @@
   <div class="sheet-head"><h3>Connect your data</h3><button type="button" class="icon-btn" data-close aria-label="Close"><span data-icon="x"></span></button></div>
   <div class="sheet-body">
     <div class="tabs" role="tablist">
-      <button class="tab active" data-tab="upload">Upload CSV</button>
-      <button class="tab" data-tab="sheet">Google Sheet</button>
-      <button class="tab" data-tab="meta">Meta Ads</button>
+      <!-- Live ad accounts first; Google Sheet and manual CSV upload come last -->
+      <button class="tab active" data-tab="meta">Meta Ads</button>
       <button class="tab" data-tab="gads">Google Ads</button>
       <button class="tab" data-tab="ga4">GA4</button>
       <button class="tab" data-tab="shopify">Shopify</button>
       <button class="tab" data-tab="partners">More partners</button>
+      <button class="tab" data-tab="sheet">Google Sheet</button>
+      <button class="tab" data-tab="upload">Upload CSV</button>
       <button class="tab" data-tab="settings">Settings</button>
     </div>
     <!-- CSV upload: real exports from Ads Manager / Google Ads / Shopify / Ad Library -->
-    <div class="tabpane active" id="tab-upload">
+    <div class="tabpane" id="tab-upload">
       <label class="file"><span>Ad export (Meta / Google Ads)</span><input type="file" id="fileAds" accept=".csv,text/csv"></label>
       <label class="file"><span>Shopify orders by UTM source <i>(optional, makes ROAS "true")</i></span><input type="file" id="fileOrders" accept=".csv,text/csv"></label>
       <label class="file"><span>Competitor ads <i>(optional, from Meta Ad Library)</i></span><input type="file" id="fileComp" accept=".csv,text/csv"></label>
@@ -324,10 +325,10 @@
       <p class="hint">Same columns as the CSV template. Each tab has its own link (it ends in <code>#gid=…</code>).</p>
     </div>
     <!-- Meta Marketing API: live account pull -->
-    <div class="tabpane" id="tab-meta">
+    <div class="tabpane active" id="tab-meta">
       <input class="field" id="metaToken" type="password" placeholder="Access token with ads_read">
       <input class="field" id="metaAccount" placeholder="Ad account ID, e.g. act_1234567890">
-      <button class="btn ghost small" id="loadMeta">Pull last 14 days</button>
+      <button class="btn ghost small" id="loadMeta">Connect data</button>
       <p class="hint">Get a token from <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener">Graph API Explorer</a>. It is used once for this pull and never stored.</p>
     </div>
     <!-- Google Ads API: ad-level cost and conversions -->
@@ -336,21 +337,21 @@
       <input class="field" id="gadsDev" type="password" placeholder="Developer token (Google Ads → Tools → API Center)">
       <input class="field" id="gadsCustomer" placeholder="Customer ID, e.g. 123-456-7890">
       <input class="field" id="gadsManager" placeholder="Manager (MCC) ID, only if you sign in through one">
-      <button class="btn ghost small" id="loadGads">Pull last 14 days</button>
+      <button class="btn ghost small" id="loadGads">Connect data</button>
       <p class="hint">Get an access token from <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener">OAuth Playground</a> (pick “Google Ads API”). Replaces any Google rows already loaded; other channels stay.</p>
     </div>
     <!-- GA4: the site's own record of purchases, used like Shopify orders to check what ads claim -->
     <div class="tabpane" id="tab-ga4">
       <input class="field" id="ga4Token" type="password" placeholder="OAuth access token (scope: analytics.readonly)">
       <input class="field" id="ga4Property" placeholder="GA4 property ID, e.g. 412345678">
-      <button class="btn ghost small" id="loadGa4">Pull last 14 days</button>
+      <button class="btn ghost small" id="loadGa4">Connect data</button>
       <p class="hint">Purchases and revenue by traffic source. Drishti uses them as the “what really sold” check, in place of Shopify orders. Token: <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener">OAuth Playground</a> → “Google Analytics Data API v1”. Property ID: GA4 Admin → Property details.</p>
     </div>
     <!-- Shopify Admin API: real orders by UTM source -->
     <div class="tabpane" id="tab-shopify">
       <input class="field" id="shopDomain" placeholder="Store address, e.g. glowveda.myshopify.com">
       <input class="field" id="shopToken" type="password" placeholder="Admin API access token (shpat_…), read_orders">
-      <button class="btn ghost small" id="loadShop">Pull last 14 days of orders</button>
+      <button class="btn ghost small" id="loadShop">Connect data</button>
       <p class="hint">Shopify admin → Settings → Apps → Develop apps → create an app with <code>read_orders</code> → install → copy the Admin API token. Orders are grouped by day and UTM source.</p>
     </div>
     <!-- Every other partner: upload the report each one exports -->
@@ -388,6 +389,6 @@
   <div class="sheet-body tipbody" id="drawerBody"></div>
 </aside>
 
-<script type="module" src="app.js?v=20261030g"></script>
+<script type="module" src="app.js?v=20261030i"></script>
 </body>
 </html>

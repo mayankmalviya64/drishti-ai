@@ -757,3 +757,18 @@ footer.foot { text-align: center; font-size: 12px; color: var(--muted); padding:
 #wiAskWrap { margin-top: 14px; }
 /* Invite row in the Telegram team panel: role + brand side by side */
 #teamPanel .rule-add .field { width: auto; flex: 1; min-width: 120px; }
+
+/* The five case-goal tiles under the results (click one for its calculation) */
+.results > .kpis { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; background: none; border: 0; box-shadow: none; padding: 0; }
+.kpi { --k: var(--P3); font: inherit; color: inherit; text-align: center; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 14px 10px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--k) 25%, transparent); background: color-mix(in srgb, var(--k) 9%, var(--panel)); transition: transform .15s, border-color .15s; }
+.kpi:hover, .kpi:focus-visible { border-color: var(--k); transform: translateY(-1px); }
+.kpi .kl { color: var(--k); font-weight: 700; font-size: 14px; line-height: 1.25; }
+.kpi .kn { color: var(--k); font: 700 26px "Space Grotesk", sans-serif; line-height: 1.1; }
+.kpi .ks { font-size: 12px; color: var(--muted); }
+.kpi .kg { font-size: 11px; color: var(--muted); }
+.kpi .goal { display: inline-block; margin-left: 4px; padding: 1px 6px; border-radius: 999px; font-weight: 600; }
+.kpi .goal.met { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); }
+.kpi .goal.miss { background: color-mix(in srgb, var(--amber) 15%, transparent); color: var(--amber); }
+.kpi.k1 { --k: #2f5fd0; } .kpi.k2 { --k: #d24a4a; } .kpi.k3 { --k: #6b3fd4; } .kpi.k4 { --k: #2e7d43; } .kpi.k5 { --k: #d9772b; }
+@media (max-width: 900px) { .results > .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

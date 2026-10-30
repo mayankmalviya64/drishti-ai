@@ -316,25 +316,44 @@ function fillScenarios(brand) {
 $$('input[name=brand], #scenario').forEach(el => el.onchange = () => { saveView(); loadSample(); if (!restoreView()) askToStart(); });
 
 // ---------------------------------------------------------------------------
-// ONE RUN PER BRAND (and condition), kept while this page is open.
+// ONE RUN PER BRAND (and condition), kept even when the page is closed.
 // Leaving Glowveda for Crunchkart and coming back shows Glowveda's run, decisions
 // and reports just as they were; Telegram taps made meanwhile are picked up again.
+// Each run is also saved in this browser (localStorage) for a day, so closing the
+// tab and opening the site again brings back the same run, cards and activity log.
 // ---------------------------------------------------------------------------
-const views = {};
+const SAVED = 'drishti-saved-runs', KEEP_MS = 24 * 60 * 60 * 1000;
+const views = (() => {
+  try {
+    const saved = JSON.parse(store.get(SAVED) || '{}');
+    // Drop runs older than a day
+    for (const k of Object.keys(saved.views || {})) if (Date.now() - (saved.views[k].savedAt || 0) > KEEP_MS) delete saved.views[k];
+    return saved.views || {};
+  } catch { return {}; }
+})();
+// Write every brand's run (and the activity log) to this browser's storage.
+// Sample data is left out: it is rebuilt exactly the same from the brand name.
+function persistViews() {
+  const slim = Object.fromEntries(Object.entries(views).map(([k, v]) => [k, { ...v, data: v.data?.source === 'Sample' ? null : v.data }]));
+  store.set(SAVED, JSON.stringify({ current: viewKey(state.data), views: slim, audit: state.audit.slice(0, 120) }));
+}
 const viewKey = d => (d?.source === 'Sample' ? `${d.brandKey}|${d.scenario || 'normal'}` : null);
 function saveView() {
   const k = viewKey(state.data);
   if (!k || !state.result || state.running) return;
   views[k] = {
+    savedAt: Date.now(),
     data: state.data, result: state.result, runId: state.runId, loop: state.loop,
     agentLog: state.agentLog, mail: state.mail, tg: state.tg, updates: state.updates, paceCut: state.paceCut,
     html: { feed: $('#feed').innerHTML, rows: $('#rows').innerHTML, strip: $('#agentStrip').innerHTML, bar: $('#agentBar').style.width,
       pill: $('#statusPill').textContent, pillClass: $('#statusPill').className, results: $('#results').innerHTML, ask: $('#askAnswer').textContent },
   };
+  persistViews();
 }
-function restoreView() {
+function restoreView(reopened = false) {
   const v = views[viewKey(state.data)];
   if (!v) return false;
+  v.data ||= state.data; // sample data, freshly rebuilt by loadSample()
   Object.assign(state, { data: v.data, result: v.result, runId: v.runId, loop: v.loop, agentLog: v.agentLog,
     mail: v.mail, tg: v.tg, updates: v.updates, paceCut: v.paceCut });
   $('#startPrompt')?.remove();
@@ -351,9 +370,13 @@ function restoreView() {
   countActions(); hubIdle(); runLabel();
   // Still waiting for decisions (or undo-able)? Listen for Telegram taps again
   if (sendsTo('telegram') && state.result.actions.some(a => a.state === 'waiting' || a.state === 'done')) pollTelegram();
-  log(`Back to ${state.data.brand}: everything is as you left it.`);
+  log(reopened ? `Site reopened: ${state.data.brand}'s run is back as you left it; Telegram decisions made meanwhile are being added.`
+    : `Back to ${state.data.brand}: everything is as you left it.`);
   return true;
 }
+// Save when the tab is hidden or closed (e.g. you switch to Telegram or shut the browser)
+addEventListener('pagehide', saveView);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveView(); });
 
 // Minimal CSV parser (handles quotes, commas inside quotes, BOM, \r\n)
 function parseCSV(text) {
@@ -1285,6 +1308,7 @@ async function run() {
   $$('input[name=brand], #scenario').forEach(el => el.disabled = false);
   hubIdle();
   watchLine('<b>Back to watching</b> · the next full check re-reads everything the agents just changed');
+  saveView();
 }
 $('#runBtn').onclick = run;
 
@@ -1491,11 +1515,14 @@ async function feedBack(a, line) {
 async function decide(id, act, from, by) {
   const a = state.result.actions.find(x => x.id === id); if (!a) return;
   const who = by ? `${by.name}${by.role ? ` (${by.role})` : ''}` : '';
-  const via = from === 'telegram' ? ' on Telegram' : '';
   const actor = who || 'You'; // the log line names the Telegram teammate who decided
   // Who decided, shown on the card, in the details panel and in the email report
   a.decidedBy = who || 'you, on the website';
-  a.decidedAt = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  // The real moment of the tap (a Telegram tap may have happened while this page was closed)
+  const tapped = new Date(by?.at || Date.now());
+  a.decidedAt = tapped.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  // Taps from more than a minute ago say when they happened: "… on Telegram at 12:30 pm"
+  const via = from === 'telegram' ? ` on Telegram${Date.now() - tapped > 60000 ? ` at ${a.decidedAt}` : ''}` : '';
   // Tell everyone else on the team what was decided on Telegram and by whom
   const tellTeam = text => { if (from === 'telegram' && who) telegramNote(`${text} by ${who}: ${a.title}`, by.chat); };
   if (act === 'hold') {
@@ -1503,6 +1530,7 @@ async function decide(id, act, from, by) {
     log(`${actor} put "${a.title}" on hold${via}`);
     if (!from) telegramNote(`⏸ On hold (set on the site): ${a.title}`);
     tellTeam('⏸ Put on hold');
+    saveView();
     return;
   }
   if (act === 'approve') {
@@ -1527,6 +1555,8 @@ async function decide(id, act, from, by) {
     if (!from) telegramNote(`↩ Undone on the site: ${a.title}`);
     tellTeam('↩ Undone');
   }
+  renderResults(state.result); // the goal tiles move as actions get done
+  saveView();
   // Post the decision to the approvals channel (Slack / Discord), if set up
   try {
     const res = await fetch(API + '/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1635,7 +1665,7 @@ function pollTelegram() {
         const u = undos[a.id]; if (!u) continue;
         const m = state.team.find(x => x.chat === u.by);
         if (m?.role !== 'director') continue;
-        decide(a.id, 'undo', 'telegram', { chat: m.chat, name: m.name, role: roleLabel(m) });
+        decide(a.id, 'undo', 'telegram', { chat: m.chat, name: m.name, role: roleLabel(m), at: u.at });
       }
       for (const a of open) {
         const d = typeof decisions[a.id] === 'string' ? { act: decisions[a.id] } : decisions[a.id];
@@ -1645,7 +1675,7 @@ function pollTelegram() {
           if (!a.refused?.[m.chat]) { (a.refused ||= {})[m.chat] = 1; sendTgNote(m.chat, `🔒 "${a.title}" needs a ${whoDecides(a)}. Your tap was not applied.`); }
           continue;
         }
-        const by = m ? { chat: m.chat, name: m.name, role: roleLabel(m) } : d.name ? { chat: d.by, name: d.name } : null;
+        const by = m ? { chat: m.chat, name: m.name, role: roleLabel(m), at: d.at } : d.name ? { chat: d.by, name: d.name, at: d.at } : null;
         if (d.act === 'approve' || d.act === 'reject') decide(a.id, d.act, 'telegram', by);
         else if (d.act === 'hold' && !a.held) decide(a.id, 'hold', 'telegram', by);
       }
@@ -1744,7 +1774,56 @@ function renderResults(r) {
     <div data-tip="roas"><small>True ROAS</small><b class="n">${r.impact.trueRoasNow} → ${r.impact.trueRoasProjected}</b> <span class="up">+${roasUp}%</span></div>
     <div data-tip="tired"><small>Spend on tired ads</small><b class="n">${r.impact.fatiguedPctNow}% → 0%</b></div>
     <div data-tip="freed"><small>Spend freed / day</small><b class="n">${inr(r.impact.freedPerDay)}</b></div>
-    <div class="head"><span class="hl">${esc(r.briefing.headline)}</span>${storm}${broken}<small>If every move is approved · <a href="#details">See the reasoning</a></small></div>`;
+    <div class="head"><span class="hl">${esc(r.briefing.headline)}</span>${storm}${broken}<small>If every move is approved · <a href="#details">See the reasoning</a></small></div>
+    <div class="kpis" aria-label="Case goals">${kpiTiles(r)}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// THE FIVE CASE GOALS, measured on this run's data. Each tile shows now → after,
+// and clicking it opens the side panel with the exact calculation and reasoning.
+// "Done so far" counts only actions already carried out; "if all approved" also
+// counts the moves still waiting for you.
+// ---------------------------------------------------------------------------
+const sumOf = (list, f) => list.reduce((t, x) => t + (f(x) || 0), 0);
+const pct1 = n => `${Math.round(n * 10) / 10}%`;
+const signed = n => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0'); // a real minus sign, e.g. −50
+const live = (a, all) => (all ? a.state !== 'rejected' && a.state !== 'undone' : a.state === 'done');
+function kpiMath(r) {
+  const acts = r.actions || [];
+  // 1) Data freshness: how old the newest row is, versus a check every hour
+  const lagDays = r.signal?.freshnessLagDays ?? 0;
+  // 2) Spend on fatigued ads (last 3 days). An ad stops counting once its "pause + swap" action is done.
+  const fat = (r.fatigue?.ads || []).filter(x => x.status === 'fatigued' && x.cause === 'creative fatigue');
+  const fatNow = r.fatigue?.pctSpendFatigued || 0;
+  const spend3 = fatNow ? (sumOf(fat, x => x.spendLast3) * 100) / fatNow : 0; // total 3-day spend, worked back from the share
+  const pauseOf = ad => acts.find(a => a.kind === 'pause' && a.title.includes(`"${ad.ad}"`));
+  const fatLeft = all => (spend3 ? (100 * sumOf(fat.filter(ad => !(pauseOf(ad) && live(pauseOf(ad), all))), x => x.spendLast3)) / spend3 : 0);
+  // 3) Creative refresh: fatigued ads that already have replacement drafts, and how long the run took
+  const drafted = (r.variants || []).filter(v => v.variants?.length);
+  // 4) Spend below break-even (last 7 days). Each cohort action removes its cut (₹/day × 7).
+  const losing = r.cohort?.losing || [], belowNow = r.cohort?.pctSpendLosing || 0;
+  const spend7 = belowNow ? (sumOf(losing, c => c.spend7) * 100) / belowNow : 0;
+  const cutOf = c => acts.find(a => a.kind === 'cohort' && a.title.startsWith(`${c.channel} · ${c.region}`));
+  const belowLeft = all => (spend7 ? (100 * Math.max(0, sumOf(losing, c => c.spend7) - sumOf(losing, c => (cutOf(c) && live(cutOf(c), all) ? cutOf(c).impact * 7 : 0)))) / spend7 : 0);
+  // 5) True blended ROAS: Shopify-calibrated ROAS now vs projected if every move is approved
+  const roasNow = r.impact.trueRoasNow, roasAfter = r.impact.trueRoasProjected;
+  const change = (now, after) => (now ? Math.round(((after - now) / now) * 100) : 0);
+  return { lagDays, fat, fatNow, spend3, pauseOf, fatDone: fatLeft(false), fatAll: fatLeft(true), drafted,
+    losing, belowNow, spend7, cutOf, belowDone: belowLeft(false), belowAll: belowLeft(true),
+    roasNow, roasAfter, roasUp: change(roasNow, roasAfter), fatChange: change(fatNow, fatLeft(true)), change };
+}
+function kpiTiles(r) {
+  const k = kpiMath(r);
+  const met = ok => `<span class="goal ${ok ? 'met' : 'miss'}">${ok ? 'Goal met' : 'Below goal'}</span>`;
+  const tile = (key, cls, label, big, sub, goal, ok) =>
+    `<button type="button" class="kpi ${cls}" data-tip="kpi-${key}"><span class="kl">${label}</span><b class="kn">${big}</b><span class="ks">${sub}</span><span class="kg">Goal: ${goal} ${met(ok)}</span></button>`;
+  return [
+    tile('fresh', 'k1', 'Data freshness lag ↓', k.lagDays ? `${k.lagDays} d → 1 h` : '1 h', k.lagDays ? 'newest data now → hourly checks' : 'data re-read every hourly check', 'lower', true),
+    tile('fatigue', 'k2', 'Spend on fatigued ads', k.fatNow ? `${signed(k.fatChange)}%` : '0%', `${pct1(k.fatNow)} → ${pct1(k.fatAll)} of spend`, '−50%', !k.fatNow || k.fatChange <= -50),
+    tile('creative', 'k3', 'Creative refresh time ↓', k.drafted.length ? `${r.seconds ?? '<1'} s` : '—', k.drafted.length ? `flag → ${k.drafted.length} replacement set${k.drafted.length > 1 ? 's' : ''} drafted` : 'no ad needed a refresh', 'lower', true),
+    tile('below', 'k4', '% spend below breakeven ↓', `${pct1(k.belowNow)} → ${pct1(k.belowAll)}`, `break-even true ROAS ${r.cohort?.breakevenRoas ?? '—'}`, 'lower', k.belowAll <= k.belowNow),
+    tile('roas', 'k5', 'True blended ROAS', `${signed(k.roasUp)}%`, `${k.roasNow} → ${k.roasAfter}`, '+25%', k.roasUp >= 25),
+  ].join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -1911,6 +1990,64 @@ const TIPS = {
   'brand-crunchkart'() { return `<h4>Crunchkart</h4><p>Aarush’s snacks brand · ₹9 L/month on Facebook, Instagram and Google. Fictional sample data.</p>`; },
   'brand-shyamlal'() { return `<h4>Shyamlal Masale</h4><p>Mr. Shyamlal’s Indore spices brand, moving from TV to digital · ₹40 L/month on Facebook, Instagram, Google and JioHotstar TV. Fictional sample data.</p>`; },
 };
+
+// Side-panel calculations for the five case-goal tiles (see kpiMath above)
+const stateWord = a => (!a ? 'no action' : a.state === 'done' ? 'done' : a.state === 'waiting' ? (a.held ? 'on hold' : 'waiting for you') : a.state);
+const ifAll = '<p class="hint">“If all approved” counts every move still waiting for you; “done so far” counts only what has actually been carried out.</p>';
+Object.assign(TIPS, {
+  'kpi-fresh'() {
+    const r = state.result, k = kpiMath(r);
+    return `<h4>Data freshness lag</h4>
+      <p>How old the newest numbers are when the agents decide. Lower is better.</p>
+      <div class="k">Calculation</div>
+      <p>Today − date of the newest row = <b>${k.lagDays} day${k.lagDays === 1 ? '' : 's'}</b> (data runs ${esc(r.period?.from || '')} to ${esc(r.period?.to || '')}).</p>
+      <div class="k">With Drishti</div>
+      <p>The agents re-read every connected source on each hourly check, so the lag drops to <b>about 1 hour</b> once live connectors are on. With sample or uploaded files, the lag is the age of the file.</p>
+      ${r.signal?.issues?.length ? `<div class="k">Signal Agent notes</div><ul>${r.signal.issues.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`;
+  },
+  'kpi-fatigue'() {
+    const r = state.result, k = kpiMath(r);
+    return `<h4>Spend on fatigued ads</h4>
+      <p>Share of the last 3 days' spend that went to ads whose fatigue score is 60 or more (CTR well below the ad's own baseline, high frequency, rising CPM). Goal: cut it by half.</p>
+      <div class="k">Calculation</div>
+      <p>Spend on fatigued ads ÷ all spend (3 days) = ${inr(sumOf(k.fat, x => x.spendLast3))} ÷ ${inr(k.spend3)} = <b>${pct1(k.fatNow)}</b>.<br>
+      An ad stops counting once its “pause and swap in fresh variants” action is carried out.</p>
+      <p>Done so far: <b>${pct1(k.fatDone)}</b> · If all approved: <b>${pct1(k.fatAll)}</b> → change <b>${signed(k.fatChange)}%</b> vs the −50% goal.</p>
+      ${k.fat.length ? `<table><tr><th>Ad</th><th>Score</th><th>CTR drop</th><th>3-day spend</th><th>Action</th></tr>${k.fat.map(ad => `<tr><td>${esc(ad.ad)} <small>${esc(ad.channel)}</small></td><td class="num">${ad.score}</td><td class="num">${ad.ctrDropPct}%</td><td class="num">${inr(ad.spendLast3)}</td><td>${stateWord(k.pauseOf(ad))}</td></tr>`).join('')}</table>` : '<p>No ad is fatigued on this data.</p>'}
+      ${ifAll}`;
+  },
+  'kpi-creative'() {
+    const r = state.result, k = kpiMath(r);
+    return `<h4>Creative refresh time</h4>
+      <p>Time from “this ad is tired” to “a replacement is ready”. Lower is better.</p>
+      <div class="k">Calculation</div>
+      <p>Fatigue Sentinel flags the ad and Creative Studio drafts replacements in the same run, so flag → draft = the run time: <b>${r.seconds ?? '<1'} s</b> for <b>${k.drafted.length}</b> ad${k.drafted.length === 1 ? '' : 's'}.</p>
+      <p>Going live still needs the brand & ASCI check (done automatically) and, for big moves, your approval. Without agents this step needs a new brief and a design round.</p>
+      ${k.drafted.length ? `<div class="k">Drafts ready</div><ul>${k.drafted.map(v => `<li><b>${esc(v.ad)}</b> (${esc(v.channel)}): ${v.variants.map(x => `${esc(x.language)}${x.check?.pass ? ' ✓' : ' ✗'}`).join(', ')}</li>`).join('')}</ul>` : '<p>No fatigued ad needed a replacement on this data.</p>'}`;
+  },
+  'kpi-below'() {
+    const r = state.result, k = kpiMath(r);
+    return `<h4>% spend below breakeven</h4>
+      <p>Share of the last 7 days' spend in channel × region pockets whose <b>true</b> ROAS (platform revenue corrected by real orders) is under break-even ${r.cohort?.breakevenRoas}. Lower is better.</p>
+      <div class="k">Calculation</div>
+      <p>Spend in losing pockets ÷ all spend (7 days) = ${inr(sumOf(k.losing, c => c.spend7))} ÷ ${inr(k.spend7)} = <b>${pct1(k.belowNow)}</b>.<br>
+      Each pocket action removes its cut × 7 days (pause = all of it, narrow = 40%, lower bid = 15%).</p>
+      <p>Done so far: <b>${pct1(k.belowDone)}</b> · If all approved: <b>${pct1(k.belowAll)}</b></p>
+      ${k.losing.length ? `<table><tr><th>Pocket</th><th>True ROAS</th><th>7-day spend</th><th>Fix</th><th>Status</th></tr>${k.losing.map(c => `<tr><td>${esc(c.channel)} · ${esc(c.region)}</td><td class="num">${c.trueRoas}</td><td class="num">${inr(c.spend7)}</td><td>${esc(c.action || '')}</td><td>${stateWord(k.cutOf(c))}</td></tr>`).join('')}</table>` : '<p>No pocket is below break-even.</p>'}
+      ${ifAll}`;
+  },
+  'kpi-roas'() {
+    const r = state.result, k = kpiMath(r), im = r.impact;
+    return `<h4>True blended ROAS</h4>
+      <p>Revenue per ₹1 of ad spend, using real orders instead of what the ad platforms claim. Goal: +25%.</p>
+      <div class="k">Calculation</div>
+      <p>Platforms claim ROAS <b>${im.platformRoas}</b>; Shopify orders say <b>${k.roasNow}</b> (true ROAS now).</p>
+      <p>Projected = (true ROAS × daily budget + extra revenue from moves) ÷ daily budget.<br>
+      Extra revenue = ${inr(im.extraRevenuePerDay)}/day (money freed from weak ads and pockets, ${inr(im.freedPerDay)}/day, moved to channels at the average true ROAS, plus the budget shift).</p>
+      <p><b>${k.roasNow} → ${k.roasAfter}</b> = <b>${signed(k.roasUp)}%</b> vs the +25% goal${k.roasUp < 25 ? ' (honest result on this data: below the goal)' : ''}.</p>
+      <p class="hint">Assumes every waiting move is approved.</p>`;
+  },
+});
 
 // The API call an agent makes for each kind of action on a real, connected account
 function apiCall(a) {
@@ -2091,5 +2228,15 @@ fillIcons();
 // A link ending in ?run starts the agents immediately (handy for sharing a live demo).
 loadSample();
 hubIdle();
+// Opening the site again: bring back the brand you were last on, with its saved run and log
+(() => {
+  let saved = {}; try { saved = JSON.parse(store.get(SAVED) || '{}'); } catch {}
+  if (saved.audit?.length) { state.audit = saved.audit; log('Site opened again. Earlier activity is kept below.'); }
+  const [brand, scenario] = (saved.current || '').split('|');
+  if (!views[saved.current] || !$(`input[name=brand][value="${brand}"]`)) return;
+  $(`input[name=brand][value="${brand}"]`).checked = true;
+  loadSample(); $('#scenario').value = scenario; loadSample();
+  restoreView(true);
+})();
 setTimeout(watchBeat, 500); // ② starts watching straight away
 if (new URLSearchParams(location.search).has('run')) setTimeout(run, 300);
