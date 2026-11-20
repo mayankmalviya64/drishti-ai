@@ -31,6 +31,10 @@ export const OPTIONS = preflight;
 
 const VERBS = { a: 'approve', h: 'hold', r: 'reject', u: 'undo' };
 const SAID = { approve: '✅ Approved', hold: '⏸ On hold', reject: '❌ Rejected', undo: '↩ Undone' };
+// Only these Telegram chats may ever receive reports or notes (Mayank's chat with the bot).
+// Anyone else's chat is refused here, even if an old browser still has them saved on its team.
+// To allow more chats later, set TELEGRAM_ALLOWED_CHATS on Vercel (comma-separated chat ids).
+const ALLOWED_CHATS = new Set((process.env.TELEGRAM_ALLOWED_CHATS || '907556204').split(',').map(c => c.trim()).filter(Boolean));
 const KEEP_SECONDS = 30 * 60; // the page listens for taps for 30 minutes, so keep updates that long
 const cut = (s, n) => (String(s).length > n ? String(s).slice(0, n - 1) + '…' : String(s));
 const rupees = n => (Math.abs(n) >= 100000 ? `₹${(n / 100000).toFixed(1)} L` : `₹${Math.round(n).toLocaleString('en-IN')}`);
@@ -272,6 +276,7 @@ export async function POST(request) {
   await ensureHook(request);
   const chat = String(body.chat || '');
   if (!/^-?\d{1,20}$/.test(chat)) return json({ sent: false, reason: 'not-linked' });
+  if (!ALLOWED_CHATS.has(chat)) return json({ sent: false, reason: 'not-allowed' });
 
   try {
     if (body.note) { await say(chat, esc(cut(body.note, 500))); return json({ sent: true }); }

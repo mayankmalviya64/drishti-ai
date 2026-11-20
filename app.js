@@ -675,8 +675,9 @@ const ROLES = {
   srmanager: { label: 'Sr Manager', can: 'Decides every move' },
 };
 const ALL_BRANDS = 'all';
-// Team Phoenix: the only people who can be invited (each invite is for one of these names)
-const TEAM_NAMES = ['Mayank', 'Arsh', 'Ashish', 'Anurag', 'Biswa'];
+// Only Mayank gets Telegram reports now (the rest of Team Phoenix was removed on request).
+// The server also refuses any other chat (see ALLOWED_CHATS in api/telegram.js).
+const TEAM_NAMES = ['Mayank'];
 // Mayank is on every visitor's team by default, as Director, so every run reports to him.
 // (chat = his Telegram chat with the bot; a chat id is not a secret, it only works through our bot)
 const DIRECTOR = { chat: '907556204', name: 'Mayank', role: 'director', brand: 'all', phone: '919009601598' };
@@ -689,6 +690,9 @@ function loadTeam() {
   if (!team.length) try { const one = JSON.parse(store.get('drishti-tg') || 'null'); if (one?.chat) team = [{ ...one, role: 'srmanager', brand: ALL_BRANDS }]; } catch {}
   // Mayank is the Director: whoever is linked as Mayank gets that role…
   for (const m of team) if (m.name === 'Mayank' || m.tgName === 'Mayank') Object.assign(m, { name: 'Mayank', role: 'director' });
+  // …and everyone else is dropped. Saving the shorter list also clears them from the synced copy.
+  const onlyMe = team.filter(m => m.name === 'Mayank' || m.chat === DIRECTOR.chat);
+  if (onlyMe.length !== team.length) { team = onlyMe; store.set('drishti-team', JSON.stringify(team)); }
   // …and if he isn't on this device's team yet, add him (once; removing him later is respected)
   if (DIRECTOR.chat && !store.get('drishti-director-added')) {
     if (!team.some(m => m.chat === DIRECTOR.chat)) team.unshift({ ...DIRECTOR });
@@ -751,7 +755,7 @@ function renderTeam() {
         <select class="field small" data-i="${i}" data-k="role" aria-label="Role of ${esc(m.name)}">${roleOpts(m.role)}</select>
         <select class="field small" data-i="${i}" data-k="brand" aria-label="Brand for ${esc(m.name)}">${brandOpts(m.brand)}</select>
         <button class="mini" type="button" data-del="${i}" aria-label="Remove ${esc(m.name)}">✕</button></li>`).join('')
-    : '<li class="none">No one yet. Invite Arsh, Ashish, Anurag or Biswa below.</li>';
+    : '<li class="none">Not linked yet. Create your invite link below.</li>';
   $$('#teamList select').forEach(s => s.onchange = () => { state.team[Number(s.dataset.i)][s.dataset.k] = s.value; saveTeam(); });
   $$('#teamList [data-del]').forEach(b => b.onclick = () => { state.team.splice(Number(b.dataset.del), 1); saveTeam(); });
   // Invites still waiting for the person to press Start
@@ -1789,6 +1793,7 @@ function sendReport(done, waiting) {
 const TG_WHY = {
   'not-configured': 'Telegram is not set up on the server yet',
   'not-linked': 'add people in the Telegram team panel first',
+  'not-allowed': 'this Telegram chat is not allowed to get reports',
   'blocked': 'the Drishti bot was stopped in Telegram; invite them again',
 };
 async function telegramReport(done, waiting) {
@@ -2203,7 +2208,7 @@ const TIPS = {
   watch() {
     return `<h4>Always watching</h4><p>Between full checks the Orchestrator keeps reading the streams in ① and your rules. A full check (Run) re-reads everything, diagnoses, recommends and acts.</p><p style="color:var(--muted)">${nIN(rowsSeen)} rows read since you opened this page.</p>`;
   },
-  email() { return `<h4>${ic('chat')} Get the action reports yourself</h4><p><b>Email (on by default):</b> type your address and every run emails you what the agents did.</p><p><b>Telegram (switch it on):</b> click the Telegram line to open your <b>Telegram team</b>. Invite yourself and your colleagues, each with a role and a brand. <b>Interns</b> get reports only. <b>Managers</b> get Approve, Hold and Reject buttons for moves up to their ₹/day limit. <b>Sr Managers</b> get buttons for every move. Tap one and the card here updates within seconds, and the rest of the team is told who decided.</p><p>With both switched on, every report goes to both.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">If you get a one-time “Activate” email, click it and run the loop again. If email services are down, the card shows a link that opens the report in your own email app.</p>`; },
+  email() { return `<h4>${ic('chat')} Get the action reports yourself</h4><p><b>Email (on by default):</b> type your address and every run emails you what the agents did.</p><p><b>Telegram (switch it on):</b> click the Telegram line to open your <b>Telegram team</b>. Reports go to the Director's Telegram, with Approve, Hold and Reject buttons for every move and ↩ Undo for actions already taken. Tap one and the card here updates within seconds.</p><p>With both switched on, every report goes to both.</p><p>After each run, one email lists every action taken and what waits for your approval. Each approval sends its own report.</p><p style="color:var(--muted)">If you get a one-time “Activate” email, click it and run the loop again. If email services are down, the card shows a link that opens the report in your own email app.</p>`; },
   // one line of the agents' feed, in full
   ev(el) {
     const a = agent(el.dataset.agent);

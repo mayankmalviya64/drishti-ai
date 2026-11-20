@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Noto+Sans:wght@400;600&family=Noto+Sans+Tamil:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
 <!-- Favicon: the Drishti eye on a red → orange tile -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23D7261E'/%3E%3Cstop offset='1' stop-color='%23F26B1D'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M5 16c3-5 6.7-7.5 11-7.5S24 11 27 16c-3 5-6.7 7.5-11 7.5S8 21 5 16Z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Ccircle cx='16' cy='16' r='3.6' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="app.css?v=20261030s">
+<link rel="stylesheet" href="app.css?v=20261121a">
 <script>
   // Light mode by default; restore dark mode if the visitor chose it before.
   try { if (localStorage.getItem('drishti-theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
@@ -265,20 +265,20 @@
 <aside class="sheet" id="teamPanel" hidden aria-label="Telegram team">
   <div class="sheet-head"><h3>Telegram team</h3><button type="button" class="icon-btn" data-close aria-label="Close"><span data-icon="x"></span></button></div>
   <div class="sheet-body">
-    <p class="hint">Everyone here gets the action reports on Telegram. Their role decides which Approve / Hold / Reject buttons they get. Their brand decides whose reports they get.</p>
+    <p class="hint">Only Mayank (the Director) gets the action reports on Telegram, with Approve / Hold / Reject buttons and ↩ Undo.</p>
     <ul class="role-help" id="roleHelp"></ul>
     <label class="limit">Managers decide moves up to ₹<input class="field tiny wide" id="mgrLimit" type="number" min="0" step="1000" aria-label="Manager approval limit in rupees per day"> a day; bigger moves need a Sr Manager.</label>
     <div class="side-k">People</div>
     <ol class="rule-list team-list" id="teamList"></ol>
     <ol class="rule-list team-list" id="inviteList"></ol>
-    <div class="side-k">Invite someone</div>
+    <div class="side-k">Link Telegram</div>
     <div class="rule-add">
       <select class="field" id="invName" aria-label="Who to invite"></select>
       <select class="field" id="invRole" aria-label="Role for the new person"></select>
       <select class="field" id="invBrand" aria-label="Brand for the new person"></select>
       <button class="btn small" id="invite" type="button">Create invite link</button>
     </div>
-    <p class="hint">Send the link to them (or open it yourself). When they press <b>Start</b> in the Drishti bot, they appear above.</p>
+    <p class="hint">Open the link yourself and press <b>Start</b> in the Drishti bot; you appear above.</p>
   </div>
 </aside>
 
@@ -407,6 +407,6 @@
   <div class="sheet-body tipbody" id="drawerBody"></div>
 </aside>
 
-<script type="module" src="app.js?v=20261030s"></script>
+<script type="module" src="app.js?v=20261121a"></script>
 </body>
 </html>
