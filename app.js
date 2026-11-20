@@ -1774,7 +1774,7 @@ async function decide(id, act, from, by) {
   // Post the decision to the approvals channel (Slack / Discord), if set up
   try {
     const res = await fetch(API + '/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ webhook: $('#webhook').value.trim() || undefined, action: a, decision: act, brand: state.result.brand }) });
+      body: JSON.stringify({ action: a, decision: act, brand: state.result.brand }) });
     const j = await res.json();
     if (j.sent) { a.sentTo = j.to; log(`Posted to ${j.to}`); updateRow(a); }
   } catch {}
@@ -1904,8 +1904,12 @@ function pollTelegram() {
 // from the browser. The first email to a new address asks that address to click
 // "Activate" once; after that every report arrives normally.
 // ---------------------------------------------------------------------------
+// Reports go only to Mayank, whatever is typed or synced into the email box
+const OWNER_EMAIL = 'mayankmalviya64@gmail.com';
+$('#email').value = OWNER_EMAIL;
+$('#email').readOnly = true;
 async function emailReport(done, waiting) {
-  const to = $('#email').value.trim();
+  const to = OWNER_EMAIL;
   if (!done.length && !waiting.length) return;
   const mark = (list, status) => { for (const a of list) { state.mail[a.id] = status; updateRow(a); } };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return mark(done, { ok: false, text: 'no email set, so no report sent' });

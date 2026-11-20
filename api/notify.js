@@ -12,7 +12,9 @@ const ALLOWED = /^https:\/\/(hooks\.slack\.com\/services\/|(discord|discordapp)\
 export async function POST(request) {
   let body;
   try { body = await readBody(request, 20000); } catch (e) { return json({ error: e.message }, 400); }
-  const hook = body.webhook || process.env.SLACK_WEBHOOK_URL;
+  // Only Mayank's own webhook (set on Vercel) is used; a webhook sent by the page is ignored,
+  // so approvals are never posted to anyone else's Slack or Discord.
+  const hook = process.env.SLACK_WEBHOOK_URL;
   if (!hook) return json({ sent: false, reason: 'no-webhook' });
   if (!ALLOWED.test(hook)) return json({ error: 'Only Slack or Discord webhook URLs are allowed.' }, 400);
 

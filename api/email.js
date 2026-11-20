@@ -10,7 +10,9 @@ import { json, preflight, readBody } from '../lib/http.js';
 
 export const OPTIONS = preflight;
 
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// Reports only ever go to Mayank. Whatever address the page sends is ignored.
+// (Change it with the REPORT_EMAIL env var on Vercel.)
+const OWNER_EMAIL = process.env.REPORT_EMAIL || 'mayankmalviya64@gmail.com';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 export async function POST(request) {
@@ -19,8 +21,7 @@ export async function POST(request) {
 
   let body;
   try { body = await readBody(request, 20000); } catch (e) { return json({ error: e.message }, 400); }
-  const to = String(body.to || '').trim();
-  if (!EMAIL.test(to)) return json({ error: 'Invalid email address.' }, 400);
+  const to = OWNER_EMAIL;
 
   // Keep it a Drishti report only (so the route can't be used to send anything else)
   const subject = 'Drishti AI · ' + String(body.subject || 'Action report').replace(/^Drishti AI · /, '').slice(0, 120);
