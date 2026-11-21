@@ -94,22 +94,34 @@ fillIcons();
 const AGENTS = [
   { id: 'ORC', icon: 'compass', name: 'Orchestrator', role: 'Shock filter',
     job: 'Decides which agent to call next. Before anyone acts, it checks whether a drop is the market (news, CPM spikes, festivals) rather than our ads.',
-    reads: 'Live news, auction prices, sale calendar' },
+    reads: 'Live news, auction prices, sale calendar',
+    // A worked example (Glowveda, Diwali week) shown on the card
+    eg: 'Revenue falls 18% in Diwali week, but CPMs are up 40% for every beauty brand. It marks most of the drop as the market, so good ads aren’t paused by mistake.' },
   { id: 'P1', icon: 'signal', name: 'Signal', role: 'Data trust',
     job: 'Joins what ad platforms claim with real Shopify orders to get TRUE ROAS, and spots broken tracking. If trust drops below 60, nothing runs on its own.',
-    reads: 'Ad rows + Shopify orders' },
+    reads: 'Ad rows + Shopify orders',
+    // A worked example (Glowveda, Diwali week) shown on the card
+    eg: 'Meta claims ₹5 L in sales from ₹1 L spend (5x), but Shopify shows ₹3 L, so true ROAS is 3x. A pixel firing twice drops trust to 45, so every move waits for you.' },
   { id: 'P2', icon: 'flame', name: 'Fatigue', role: 'Sentinel',
     job: 'Scores every ad 0–100 against its own first days (CTR, how often people saw it, CPM) and pauses ads that have worn out.',
-    reads: 'Daily CTR, frequency, CPM per ad' },
+    reads: 'Daily CTR, frequency, CPM per ad',
+    // A worked example (Glowveda, Diwali week) shown on the card
+    eg: 'A serum reel’s CTR fell from 2.4% to 0.9% while each person saw it 6 times. Fatigue score 82, so the ad is paused.' },
   { id: 'P3', icon: 'sparkles', name: 'Creative', role: 'Studio',
     job: 'Writes replacement ads in English and regional languages, checks them against ASCI rules, and moves videos to the channel they suit (phone feed → TV).',
-    reads: 'Tired ads, regions, video results per channel' },
+    reads: 'Tired ads, regions, video results per channel',
+    // A worked example (Glowveda, Diwali week) shown on the card
+    eg: 'Writes Hindi and Tamil Diwali ads, blocks “clears pigmentation in 7 days, guaranteed” (unproven claim), and moves a 30-sec video from Instagram to YouTube on TV.' },
   { id: 'P4', icon: 'target', name: 'Cohort', role: 'Optimizer',
     job: 'Finds city and audience pockets that lose money, and compares our ads with competitors’ ads. Trims, narrows or shifts spend.',
-    reads: 'Spend × region, competitor ads' },
+    reads: 'Spend × region, competitor ads',
+    // A worked example (Glowveda, Diwali week) shown on the card
+    eg: 'Tier-3 men 18–24: ₹40k spent, ₹15k back, so cut. Pune and Bengaluru women 25–34 at 4.5x get more. A rival pushes BOGO, so it suggests a gift-box angle instead.' },
   { id: 'P5', icon: 'scale', name: 'Budget', role: 'Allocator',
     job: 'Moves tomorrow’s rupee to the channel with the best next-rupee return, paces for festivals, and enforces your “flat revenue → hold” rule.',
-    reads: 'True revenue curves, your rule, calendar' },
+    reads: 'True revenue curves, your rule, calendar',
+    // A worked example (Glowveda, Diwali week) shown on the card
+    eg: 'Meta’s last ₹10k returned 1.5x and Google’s returned 3.8x, so ₹25k moves to Google for tomorrow, with 30% kept back for Dhanteras.' },
 ];
 const agent = id => AGENTS.find(a => a.id === id) || { name: id };
 const agentName = id => agent(id).name;
@@ -2523,7 +2535,7 @@ $('#aboutBody').innerHTML = `
 
 $('#agentsBody').innerHTML = `<div class="agent-list">${AGENTS.map(a => `
   <div class="agent-card" style="--c:var(--${a.id})"><span class="av" data-icon="${a.icon}"></span>
-    <div><b>${esc(a.name)}</b><span class="role">${esc(a.role)}</span><p>${esc(a.job)}</p></div></div>`).join('')}</div>
+    <div><b>${esc(a.name)}</b><span class="role">${esc(a.role)}</span><p>${esc(a.job)}</p><p class="eg"><b>e.g.</b> ${esc(a.eg)}</p></div></div>`).join('')}</div>
   <p class="hint">On the agent screen, click any agent to see what it said on the last run.</p>`;
 fillIcons();
 
