@@ -121,8 +121,19 @@ function clean(r, sources) {
     needsYou: list(r.needsYou, 4, a => ({ action: str(a.action ?? a), why: str(a.why, 240), cite: cites(a.cite) })),
     // 5 "If this happens → we will do this" lines for leadership
     leadership: (Array.isArray(r.leadership) ? r.leadership : [])
-      .map(a => ({ if: typeof a?.if === 'string' ? str(a.if, 200) : '', then: typeof a?.then === 'string' ? str(a.then, 260) : '' }))
+      .map(a => ({ if: typeof a?.if === 'string' ? plain(str(a.if, 200)) : '', then: typeof a?.then === 'string' ? plain(str(a.then, 260)) : '' }))
       .filter(a => a.if && a.then).slice(0, 5),   // only complete "if → then" pairs
     followUps: (Array.isArray(r.followUps) ? r.followUps : []).slice(0, 3).map(q => str(q, 120)).filter(Boolean),
   };
+}
+
+// Leadership lines in plain English: swap ad jargon for everyday words
+// e.g. "True ROAS falls below 2" → "Real return on ad spend falls below ₹2 per ₹1"
+function plain(t) {
+  return t
+    .replace(/\btrue ROAS\b/gi, m => (m[0] === 'T' ? 'R' : 'r') + 'eal return on ad spend')
+    .replace(/\bROAS\b/g, 'return on ad spend')
+    .replace(/(return on ad spend[^.,;]*?\b(?:below|above|under|over|of|to)\s+)(\d+(?:\.\d+)?)\b(?![%×x])/gi, '$1₹$2 per ₹1')
+    .replace(/\bCPMs?\b/g, 'ad costs').replace(/\bCTR\b/g, 'click rate').replace(/\bCVR\b/g, 'sales per click')
+    .replace(/\bCOD\b/g, 'cash-on-delivery').replace(/\bRTO\b/g, 'returned orders').replace(/\bAOV\b/g, 'average order value');
 }
