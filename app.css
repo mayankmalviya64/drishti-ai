@@ -800,3 +800,24 @@ footer.foot { text-align: center; font-size: 12px; color: var(--muted); padding:
 
 /* Usage log under AI tokens */
 .usage-log td small { color: var(--muted); }
+
+/* Custom condition: Run on this situation (answer card, citations, do-now vs needs-you, chat) */
+.cc-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.cc-run .pill { font-size: 11px; vertical-align: middle; margin-left: 6px; }
+.cite { display: inline-block; font: 600 10.5px Inter, sans-serif; padding: 1px 6px; margin: 0 2px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line-strong); color: var(--orange-ink); text-decoration: none; vertical-align: 1px; }
+.cite.news { border-color: var(--orange); }
+.cite.guess { color: var(--muted); border-style: dashed; }
+.cc-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+.cc-split > div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 12px 10px; }
+.cc-split h5 svg { width: 12px; height: 12px; vertical-align: -1px; }
+@media (max-width: 720px) { .cc-split { grid-template-columns: 1fr; } }
+.cc-src { margin: 0; padding-left: 0; list-style: none; font-size: 12px; line-height: 1.5; max-height: 180px; overflow: auto; }
+.cc-src li { margin-bottom: 3px; } .cc-src b { color: var(--orange-ink); margin-right: 4px; }
+.cc-src li:target { background: var(--panel); outline: 2px solid var(--orange); border-radius: 6px; }
+.cc-chat { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.cc-chat .msg { padding: 9px 12px; border-radius: 10px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; max-width: 92%; }
+.cc-chat .msg.user { align-self: flex-end; background: var(--grad, var(--orange)); color: #fff; }
+.cc-chat .msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+.cc-run .chips { margin-bottom: 8px; }
+.cc-run .ask .field { flex: 1; }
+.cc-run .hl { font-weight: 500; }

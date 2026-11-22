@@ -921,7 +921,9 @@ function openCustom() {
   if (d?.source !== 'Sample') { setStatus('Custom conditions work on the sample brands for now. Pick Glowveda, Crunchkart or Shyamlal Masale.'); return; }
   $('#ccBrand').textContent = d.brand;
   const mine = customDrafts[d.brandKey];
-  $('#ccText').value = mine?.text || '';
+  const sit = situations[d.brandKey]; // last "Run on this situation" answer for this brand
+  $('#ccText').value = sit?.text || mine?.text || '';
+  if (sit) renderSituation(sit); else $('#ccRunOut').innerHTML = '';
   $('#ccEg').innerHTML = (CC_IDEAS[d.brandKey] || []).map(t => `<button type="button">${esc(t)}</button>`).join('');
   $$('#ccEg button').forEach(b => b.onclick = () => { $('#ccText').value = b.textContent; $('#ccText').focus(); });
   pendingDraft = mine || null;
@@ -1005,6 +1007,177 @@ function clearDraft() {
   pendingDraft = null; $('#ccOut').innerHTML = '';
   if ($('#scenario').value === 'custom') { $('#scenario').value = 'normal'; loadSample(); if (!restoreView()) askToStart(); }
   else fillScenarios(key);
+}
+
+// ---------------------------------------------------------------------------
+// RUN ON THIS SITUATION: the Orchestrator answers what you typed (real or
+// hypothetical) for the brand on screen. It uses the brand's latest run numbers
+// (each one numbered D1, D2… so it can be cited) plus today's news (N1, N2…).
+// The answer shows: a direct reply, what was ASSUMED (with sources, or marked
+// "Assumed" when nothing backs it), what the numbers say, and the recommendations
+// split into "Agent does now" and "Needs you". A chat box below keeps going.
+// The last answer per brand is kept in this browser.
+// ---------------------------------------------------------------------------
+const SITUATION = 'drishti-situation';
+const situations = (() => { try { return JSON.parse(store.get(SITUATION) || '{}'); } catch { return {}; } })();
+const saveSituations = () => store.set(SITUATION, JSON.stringify(situations));
+
+// The brand's latest run. If nothing has run yet, run the built-in rules engine
+// here in the browser (no AI tokens, nothing sent anywhere) just to get the numbers.
+async function latestRun() {
+  if (state.result) return state.result;
+  const d = state.data;
+  if (!d?.rows?.length) return null;
+  const { runDrishti } = await import('./lib/agent.js');
+  let r = null;
+  await runDrishti({ brand: d.brand, category: d.category, rows: d.rows, orders: d.orders, competitors: d.competitors || [],
+    breakevenRoas: Number($('#breakeven').value) || 2, rules: state.rules, model: 'rules',
+    scenario: d.source === 'Sample' ? scenarioContext(d.scenario) : null }, e => { if (e.type === 'result') r = e; });
+  return r;
+}
+
+// Turn the run into numbered facts the AI can cite: D1, D2, …
+function situationFacts(r) {
+  const f = [], add = (label, value) => f.push({ id: `D${f.length + 1}`, label, value: String(value) });
+  const sumBy = (k) => (r.signal?.perChannel || []).reduce((s, c) => s + (c[k] || 0), 0);
+  if (r.period) add('Data period', `${r.period.from} to ${r.period.to} (${r.period.days} days)`);
+  add('Ad spend, last 7 days (all channels)', inr(sumBy('spend7')));
+  add('Revenue the ad platforms claim, last 7 days', inr(sumBy('platformRevenue7')));
+  add('Revenue matched to real Shopify orders, last 7 days', inr(sumBy('trueRevenue7')));
+  add('ROAS the platforms report (claimed revenue ÷ spend)', r.impact.platformRoas);
+  add('True ROAS (Shopify orders ÷ spend)', r.impact.trueRoasNow);
+  add('Break-even true ROAS set on this page (below it an ad loses money)', r.cohort?.breakevenRoas ?? ($('#breakeven').value || 2));
+  add('Share of spend in pockets below break-even', `${r.cohort?.pctSpendLosing ?? 0}%`);
+  add('Share of recent spend on tired (fatigued) ads', `${r.impact.fatiguedPctNow ?? r.fatigue?.pctSpendFatigued ?? 0}%`);
+  add('Data trust score (tracking health)', `${r.signal?.trustScore ?? '—'}/100${r.signal?.issues?.length ? ' · ' + r.signal.issues.slice(0, 2).join('; ') : ''}`);
+  for (const c of (r.signal?.perChannel || []).slice(0, 6))
+    add(`${c.channel}: claimed vs true ROAS`, `${c.platformRoas} claimed · ${c.trueRoas} true · spend ${inr(c.spend7)} in 7 days`);
+  for (const c of (r.cohort?.losing || []).slice(0, 3))
+    add(`Losing pocket: ${c.channel} · ${c.region}`, `true ROAS ${c.trueRoas} on ${inr(c.dailySpend)}/day`);
+  add('Money the agents stop wasting per day after fixes', inr(r.impact.freedPerDay));
+  add('True ROAS expected after the agents act', r.impact.trueRoasProjected);
+  for (const a of (r.actions || []).slice(0, 6))
+    add(`Planned action (${a.tier === 'auto' ? 'agent does it' : 'waits for approval'})`, a.title);
+  return f;
+}
+
+// "[D3]" / "[N1, D2]" in text → small clickable source tags
+function citeText(text, sources) {
+  const byId = Object.fromEntries((sources || []).map(s => [s.id, s]));
+  return esc(text).replace(/\[((?:[DN]\d+\s*,?\s*)+)\]/g, (_, ids) => ids.split(/[\s,]+/).filter(Boolean).map(id => citeTag(id, byId)).join(''));
+}
+function citeTag(id, byId) {
+  const s = byId[id];
+  if (!s) return '';
+  return s.kind === 'news' && s.link
+    ? `<a class="cite news" href="${esc(s.link)}" target="_blank" rel="noopener" title="${esc(s.title)}">${esc(id)}</a>`
+    : `<a class="cite" href="#src-${esc(id)}" title="${esc(s.title)}">${esc(id)}</a>`;
+}
+const cites = (ids, sources) => { const byId = Object.fromEntries(sources.map(s => [s.id, s])); return (ids || []).map(id => citeTag(id, byId)).join(''); };
+
+// When the AI can't be reached: build the same kind of answer from the run's own numbers
+function situationLocally(text, r, facts, why) {
+  const id = label => facts.find(f => f.label.startsWith(label))?.id;
+  const [P, T, B, L] = [id('ROAS the platforms'), id('True ROAS (Shopify'), id('Break-even'), id('Share of spend in pockets')].map(x => x ? [x] : []);
+  const gap = r.impact.platformRoas - r.impact.trueRoasNow;
+  return {
+    by: `built-in rules (${why || 'AI not reachable'})`, title: 'Your situation: first read', real: false,
+    answer: `Read with this brand's own numbers: the platforms report ROAS ${r.impact.platformRoas} [${P}], but real Shopify orders give ${r.impact.trueRoasNow} [${T}] against a break-even of ${r.cohort?.breakevenRoas ?? 2} [${B}]. `
+      + (gap > 0.3 ? 'So part of the "profit" the dashboards show is over-claimed by the platforms. ' : '')
+      + `${r.cohort?.pctSpendLosing ?? 0}% of spend sits in pockets that lose money [${L}]. The AI was not reachable, so the details of your situation could not be read; treat this as a first read.`,
+    assumptions: [
+      { text: 'Details not given in the situation were not read (no AI), so it is treated as hypothetical and applied to all channels.', cite: [] },
+      { text: `Costs besides ads (product, shipping, returns) are covered by the break-even ROAS of ${r.cohort?.breakevenRoas ?? 2} set on this page.`, cite: B },
+    ],
+    findings: [
+      { text: `Platforms claim ROAS ${r.impact.platformRoas}; Shopify orders say ${r.impact.trueRoasNow}.`, cite: [...P, ...T] },
+      { text: `${r.cohort?.pctSpendLosing ?? 0}% of spend is below break-even.`, cite: L },
+    ],
+    doNow: r.actions.filter(a => a.tier === 'auto').slice(0, 4).map(a => ({ action: a.title, why: cut(a.detail || '', 200), cite: [] })),
+    needsYou: [...r.actions.filter(a => a.tier === 'approval').slice(0, 3).map(a => ({ action: a.title, why: cut(a.detail || '', 200), cite: [] })),
+      { action: 'Confirm the situation and any cost details the agents cannot see (returns, COD cancellations, discounts, fixed costs).', why: 'They change whether the brand is really in profit.', cite: [] }],
+    followUps: [],
+  };
+}
+
+// The answer card + the chat
+function renderSituation(s) {
+  const src = s.sources || [], res = s.result;
+  const li = (x, main) => `<li>${citeText(x[main], src)}${x.why ? `<br><small>${citeText(x.why, src)}</small>` : ''} ${cites(x.cite, src)}</li>`;
+  $('#ccRunOut').innerHTML = `<div class="cc-draft cc-run">
+    <h4>${esc(res.title)} <span class="pill ${res.real ? 's-amber' : 's-green'}">${res.real ? 'In today\'s news' : 'Hypothetical'}</span></h4>
+    <p class="hl">${citeText(res.answer, src)}</p>
+    <h5>What we assumed (not given in your situation)</h5>
+    <ul class="cc-assume">${res.assumptions.map(a => `<li>${citeText(a.text, src)} ${a.cite.length ? cites(a.cite, src) : '<span class="cite guess">Assumed</span>'}</li>`).join('') || '<li>Nothing had to be assumed.</li>'}</ul>
+    ${res.findings.length ? `<h5>What ${esc(state.data?.brand || 'the brand')}'s numbers say</h5><ul>${res.findings.map(x => li(x, 'text')).join('')}</ul>` : ''}
+    <div class="cc-split">
+      <div><h5>${ic('play')} Agent does now</h5><ul>${res.doNow.map(x => li(x, 'action')).join('') || '<li>Nothing safe to do on its own yet.</li>'}</ul></div>
+      <div><h5>${ic('users')} Needs you</h5><ul>${res.needsYou.map(x => li(x, 'action')).join('') || '<li>Nothing needs you right now.</li>'}</ul></div>
+    </div>
+    <h5>Sources</h5>
+    <ol class="cc-src">${src.filter(x => x.kind === 'news').map(x => `<li id="src-${esc(x.id)}"><b>${esc(x.id)}</b> <a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a>${x.source ? ` <small>· ${esc(x.source)}${x.date ? ' · ' + esc(String(x.date).slice(0, 16)) : ''}</small>` : ''}</li>`).join('')}
+      ${src.filter(x => x.kind === 'data').map(x => `<li id="src-${esc(x.id)}"><b>${esc(x.id)}</b> Drishti data · ${esc(x.title)}</li>`).join('')}</ol>
+    ${src.some(x => x.kind === 'news') ? '' : '<p class="hint">No matching news found today, so only the brand\'s own data is cited.</p>'}
+    <p class="hint">Answered by ${esc(s.by)} · ${new Date(s.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' })} IST</p>
+    <h5>Continue the chat</h5>
+    <div class="cc-chat" id="ccChat">${(s.history || []).map(m => `<div class="msg ${m.role}">${m.role === 'user' ? esc(m.content) : citeText(m.content, src)}</div>`).join('')}</div>
+    <div class="chips" id="ccFollow">${['Which of these should the agents do right now?', 'Which ones need my decision, and what do I tell my boss?', ...(res.followUps || [])].map(q => `<button type="button">${esc(q)}</button>`).join('')}</div>
+    <form class="ask" id="ccAskForm"><input class="field" id="ccAsk" placeholder="Ask a follow-up, e.g. what if returns are 20%?" autocomplete="off"><button class="btn" type="submit">Send</button></form>
+    <div class="cc-actions"><button type="button" class="mini" id="ccToLoop">Also turn it into a data condition for the live loop</button></div>
+  </div>`;
+  $$('#ccFollow button').forEach(b => b.onclick = () => { $('#ccAsk').value = b.textContent; situationChat(); });
+  $('#ccAskForm').onsubmit = ev => { ev.preventDefault(); situationChat(); };
+  $('#ccToLoop').onclick = () => $('#ccForm').requestSubmit(); // same as "Draft with today's news"
+  fillIcons();
+}
+
+// Run button
+$('#ccRun').onclick = async () => {
+  const text = $('#ccText').value.trim();
+  if (text.length < 8) { $('#ccRunOut').innerHTML = '<p class="hint">Write a sentence or two about the situation.</p>'; return; }
+  const btn = $('#ccRun'), key = state.data?.brandKey || state.data?.brand;
+  btn.disabled = true;
+  $('#ccRunOut').innerHTML = '<p class="hint"><span class="typing">Reading the brand\'s numbers and today\'s news, then working out what to do</span></p>';
+  try {
+    const r = await latestRun();
+    if (!r) { $('#ccRunOut').innerHTML = '<p class="hint">Load a brand or connect data first.</p>'; return; }
+    const facts = situationFacts(r);
+    const factSources = facts.map(f => ({ id: f.id, kind: 'data', title: `${f.label}: ${f.value}` }));
+    let s = null, why = '';
+    if (!state.offline) {
+      try {
+        const res = await fetch(API + '/api/situation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(45000),
+          body: JSON.stringify({ text, brand: brandInfo(), facts, model: $('#modelPick').value || undefined }) });
+        const j = await res.json();
+        if (j.result) { s = { result: j.result, sources: j.sources, by: j.engine || 'AI' }; trackAI(j.usage, 'ask'); }
+        else why = j.error || '';
+      } catch (e) { why = e.name === 'TimeoutError' ? 'AI took too long' : 'server not reachable'; }
+    } else why = 'server not reachable';
+    if (!s) { const res = situationLocally(text, r, facts, why); s = { result: res, sources: factSources, by: res.by }; }
+    Object.assign(s, { text, facts, at: Date.now(), history: [] });
+    situations[key] = s; saveSituations();
+    log(`Situation run for ${state.data.brand}: “${cut(text, 80)}”`);
+    renderSituation(s);
+  } finally { btn.disabled = false; }
+};
+
+// Follow-up chat: same situation, same sources, the conversation so far
+async function situationChat() {
+  const key = state.data?.brandKey || state.data?.brand, s = situations[key];
+  const q = $('#ccAsk').value.trim();
+  if (!s || !q) return;
+  const box = $('#ccChat');
+  box.insertAdjacentHTML('beforeend', `<div class="msg user">${esc(q)}</div><div class="msg assistant typing">Thinking</div>`);
+  $('#ccAsk').value = '';
+  const add = text => { s.history.push({ role: 'user', content: q }, { role: 'assistant', content: text }); saveSituations(); renderSituation(s); $('#ccChat').lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
+  if (state.offline) return add('The chat needs our server, which this network cannot reach right now. Try another network or mobile data.');
+  try {
+    const res = await fetch(API + '/api/situation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(35000),
+      body: JSON.stringify({ text: s.text, brand: brandInfo(), facts: s.facts, sources: s.sources, history: s.history, question: q, model: $('#modelPick').value || undefined }) });
+    const j = await res.json();
+    if (j.usage) trackAI(j.usage, 'ask');
+    add(j.answer || j.error || 'No answer came back. Please try again.');
+  } catch (e) { add(e.name === 'TimeoutError' ? 'The AI took too long. Please try again.' : 'Could not reach the Orchestrator. ' + e.message); }
 }
 
 // ---------------------------------------------------------------------------
