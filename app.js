@@ -1183,6 +1183,9 @@ $('#ccRun').onclick = async () => {
       } catch (e) { why = e.name === 'TimeoutError' ? 'AI took too long' : 'server not reachable'; }
     } else why = 'server not reachable';
     if (!s) { const res = situationLocally(text, r, facts, why); s = { result: res, sources: factSources, by: res.by }; }
+    // Leadership always gets exactly 5 lines: if the AI gave fewer, top up with the ones built from the run's numbers
+    const lead = s.result.leadership ||= [];
+    for (const x of situationLocally(text, r, facts).leadership) if (lead.length < 5) lead.push(x);
     Object.assign(s, { text, facts, at: Date.now(), history: [] });
     situations[key] = s; saveSituations();
     log(`Situation run for ${state.data.brand}: “${cut(text, 80)}”`);
