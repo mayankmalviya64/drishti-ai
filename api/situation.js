@@ -86,7 +86,7 @@ Return ONLY a JSON object:
  "findings": 2-5 of {"text": what the brand's numbers say about this situation, "cite": [ids]},
  "doNow": 2-4 of {"action": concrete move, "why": short reason, "cite": [ids]},
  "needsYou": 1-4 of {"action": decision for the human, "why": short reason, "cite": [ids]},
- "leadership": exactly 5 of {"if": a short trigger in simple English (what happens or what we find), "then": what we will do, in simple English with ₹ or % where useful} — written for senior leaders with no ad jargon (say "return on ad spend" not "ROAS"), each line under 25 words, ordered from most to least important,
+ "leadership": exactly 5 of {"if": a short trigger in simple English (what happens or what we find), "then": what we will do, in simple English with ₹ or % where useful} — written for senior leaders with NO jargon or short forms (never write ROAS, CPM, CTR, CVR, COD or RTO: say "return on ad spend", "ad cost", "clicks", "cash-on-delivery", "returned orders"), both "if" and "then" must be plain strings, each line under 25 words, ordered from most to least important,
  "followUps": 3 short follow-up questions the marketer might ask next}` },
         { role: 'user', content: `Brand: ${JSON.stringify(brand).slice(0, 3000)}\n\nSources:\n${listSources(sources)}\n\nSituation: ${text}` },
       ],
@@ -120,7 +120,9 @@ function clean(r, sources) {
     doNow: list(r.doNow, 4, a => ({ action: str(a.action ?? a), why: str(a.why, 240), cite: cites(a.cite) })),
     needsYou: list(r.needsYou, 4, a => ({ action: str(a.action ?? a), why: str(a.why, 240), cite: cites(a.cite) })),
     // 5 "If this happens → we will do this" lines for leadership
-    leadership: list(r.leadership, 5, a => ({ if: str(a.if ?? a.when, 200), then: str(a.then ?? a.do ?? a, 260) })),
+    leadership: (Array.isArray(r.leadership) ? r.leadership : [])
+      .map(a => ({ if: typeof a?.if === 'string' ? str(a.if, 200) : '', then: typeof a?.then === 'string' ? str(a.then, 260) : '' }))
+      .filter(a => a.if && a.then).slice(0, 5),   // only complete "if → then" pairs
     followUps: (Array.isArray(r.followUps) ? r.followUps : []).slice(0, 3).map(q => str(q, 120)).filter(Boolean),
   };
 }
