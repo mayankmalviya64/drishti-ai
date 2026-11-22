@@ -2599,7 +2599,7 @@ Object.assign(TIPS, {
       <p>Share of the last 3 days' spend that went to ads whose fatigue score is 60 or more (CTR well below the ad's own baseline, high frequency, rising CPM). Goal: cut it by half.</p>
       <div class="k">Calculation</div>
       <p>Spend on fatigued ads ÷ all spend (3 days) = ${inr(sumOf(k.fat, x => x.spendLast3))} ÷ ${inr(k.spend3)} = <b>${pct1(k.fatNow)}</b>.<br>
-      An ad stops counting once its “pause and swap in fresh variants” action is carried out.</p>
+      An ad stops counting once its “pause and swap in fresh versions” action is carried out.</p>
       <p>Done so far: <b>${pct1(k.fatDone)}</b> · If all approved: <b>${pct1(k.fatAll)}</b> → change <b>${signed(k.fatChange)}%</b> vs the −50% goal.</p>
       ${k.fat.length ? `<table><tr><th>Ad</th><th>Score</th><th>CTR drop</th><th>3-day spend</th><th>Action</th></tr>${k.fat.map(ad => `<tr><td>${esc(ad.ad)} <small>${esc(ad.channel)}</small></td><td class="num">${ad.score}</td><td class="num">${ad.ctrDropPct}%</td><td class="num">${inr(ad.spendLast3)}</td><td>${stateWord(k.pauseOf(ad))}</td></tr>`).join('')}</table>` : '<p>No ad is fatigued on this data.</p>'}
       ${ifAll}`;
@@ -2619,7 +2619,7 @@ Object.assign(TIPS, {
       <p>Share of the last 7 days' spend in channel × region pockets whose <b>true</b> ROAS (platform revenue corrected by real orders) is under break-even ${r.cohort?.breakevenRoas}. Lower is better.</p>
       <div class="k">Calculation</div>
       <p>Spend in losing pockets ÷ all spend (7 days) = ${inr(sumOf(k.losing, c => c.spend7))} ÷ ${inr(k.spend7)} = <b>${pct1(k.belowNow)}</b>.<br>
-      Each pocket action removes its cut × 7 days (pause = all of it, narrow = 40%, lower bid = 15%).</p>
+      Each pocket action removes its cut × 7 days (pause = all of it, show to fewer people = 40%, bid less = 15%).</p>
       <p>Done so far: <b>${pct1(k.belowDone)}</b> · If all approved: <b>${pct1(k.belowAll)}</b></p>
       ${k.losing.length ? `<table><tr><th>Pocket</th><th>True ROAS</th><th>7-day spend</th><th>Fix</th><th>Status</th></tr>${k.losing.map(c => `<tr><td>${esc(c.channel)} · ${esc(c.region)}</td><td class="num">${c.trueRoas}</td><td class="num">${inr(c.spend7)}</td><td>${esc(c.action || '')}</td><td>${stateWord(k.cutOf(c))}</td></tr>`).join('')}</table>` : '<p>No pocket is below break-even.</p>'}
       ${ifAll}`;
