@@ -1064,7 +1064,9 @@ function situationFacts(r) {
 // "[D3]" / "[N1, D2]" in text → small clickable source tags
 function citeText(text, sources) {
   const byId = Object.fromEntries((sources || []).map(s => [s.id, s]));
-  return esc(text).replace(/\[((?:[DN]\d+\s*,?\s*)+)\]/g, (_, ids) => ids.split(/[\s,]+/).filter(Boolean).map(id => citeTag(id, byId)).join(''));
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')   // the AI sometimes writes **bold** markdown
+    .replace(/\[((?:[DN]\d+\s*,?\s*)+)\]/g, (_, ids) => ids.split(/[\s,]+/).filter(Boolean).map(id => citeTag(id, byId)).join(''));
 }
 function citeTag(id, byId) {
   const s = byId[id];
