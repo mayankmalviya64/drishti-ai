@@ -25,6 +25,10 @@ Citation rules:
 - Cite sources inline with their ids in square brackets, e.g. [D3] or [N1]. Only use ids from the list.
 - Never invent numbers, articles or links. If a number is not in the sources, say it is an assumption.
 - When the situation leaves details out, assume sensible values for an Indian D2C brand and say so clearly.
+- Assumptions must be about details the situation and the data do NOT give, with a concrete value where it matters
+  (e.g. return/RTO rate, COD cancellations, discounts, GST, product and shipping cost, fixed costs, agency fees,
+  which channels or regions are hit, how long it lasts). Do not list facts from the sources as assumptions.
+- Take the situation seriously even if the data seems to disagree: explain what could make it true and how to check it.
 Action rules:
 - "doNow" = safe moves the agents can do right away on their own (small budget trims, pausing tired ads, drafting creatives, fixing tracking, pulling reports).
 - "needsYou" = anything that needs a human: big budget moves, pricing, stopping a whole channel, talking to a boss, finance or a partner, or anything risky or irreversible.
@@ -78,7 +82,7 @@ Return ONLY a JSON object:
 {"title": short name for the situation ≤ 7 words,
  "real": true if the news sources show it is really happening, false if hypothetical,
  "answer": 2-4 sentences that directly answer the marketer, with citations,
- "assumptions": 2-5 of {"text": what you assumed because it was not given, "cite": [ids that support it, or [] if it is a pure guess]},
+ "assumptions": 3-5 of {"text": what you assumed because it was not given, "cite": [ids that support it, or [] if it is a pure guess]},
  "findings": 2-5 of {"text": what the brand's numbers say about this situation, "cite": [ids]},
  "doNow": 2-4 of {"action": concrete move, "why": short reason, "cite": [ids]},
  "needsYou": 1-4 of {"action": decision for the human, "why": short reason, "cite": [ids]},
