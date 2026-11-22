@@ -1159,7 +1159,7 @@ function mdReply(text, sources = []) {
       const cells = r => r.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
       const body = rows.filter(r => !/^\|?\s*:?-{2,}/.test(r.replace(/\s/g, '').replace(/^\|/, '')) || /[a-z0-9₹]/i.test(r.replace(/[|:\-\s]/g, '')));
       const [head, ...rest] = body;
-      out.push(`<div class="md-table"><table><tr>${cells(head).map(c => `<th>${inline(c)}</th>`).join('')}</tr>${rest.map(r => `<tr>${cells(r).map(c => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</table></div>`);
+      out.push(`<div class="md-table"><table><tr>${cells(head).map(c => `<th>${inline(c)}</th>`).join('')}</tr>${rest.map(r => { const c = cells(r), n = cells(head).length; while (c.length < n) c.push(''); return `<tr>${c.slice(0, Math.max(n, c.length)).map(x => `<td>${inline(x)}</td>`).join('')}</tr>`; }).join('')}</table></div>`);
       continue;
     }
     if (ln.startsWith('@@MATH@@')) { out.push(`<div class="md-math">${inline(ln.slice(8))}</div>`); i++; continue; }
