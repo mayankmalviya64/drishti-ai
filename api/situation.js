@@ -29,6 +29,12 @@ Citation rules:
   (e.g. return/RTO rate, COD cancellations, discounts, GST, product and shipping cost, fixed costs, agency fees,
   which channels or regions are hit, how long it lasts). Do not list facts from the sources as assumptions.
 - Take the situation seriously even if the data seems to disagree: explain what could make it true and how to check it.
+Money rules (always follow in any calculation):
+- Break-even true ROAS B means product, shipping and other costs take (1 − 1/B) of revenue.
+  Profit after ads = Revenue ÷ B − Ad spend (same as Ad spend × (True ROAS ÷ B − 1)).
+  NEVER call "Revenue − Ad spend" profit; that ignores product costs.
+- Money the agents "free" or "save" is moved to better ads: total ad spend stays the same unless a source says otherwise.
+- Use true ROAS (Shopify orders) for money; platform ROAS is only what the ad platforms claim.
 Action rules:
 - "doNow" = safe moves the agents can do right away on their own (small budget trims, pausing tired ads, drafting creatives, fixing tracking, pulling reports).
 - "needsYou" = anything that needs a human: big budget moves, pricing, stopping a whole channel, talking to a boss, finance or a partner, or anything risky or irreversible.
