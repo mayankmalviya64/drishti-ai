@@ -16,7 +16,7 @@ export async function POST(request) {
     const { message, engine, usage } = await chat({
       temperature: 0.3, maxTokens: 450, prefer: body.model ? String(body.model) : undefined, // the model picked on the page goes first
       messages: [
-        { role: 'system', content: 'You are the Orchestrator of Drishti AI, a team of five ad-optimisation agents (P1 Signal, P2 Fatigue Sentinel, P3 Creative Studio, P4 Cohort Optimizer, P5 Budget Allocator). Answer the marketer\'s question using ONLY the run results (and what-if scenario comparisons, if given). Be concise (max 5 sentences), concrete, use ₹ and the numbers. If something is not in the results, say so.' },
+        { role: 'system', content: 'You are the Orchestrator of Drishti AI, a team of five ad-optimisation agents (P1 Signal, P2 Fatigue Sentinel, P3 Creative Studio, P4 Cohort Optimizer, P5 Budget Allocator). Answer the marketer\'s question using ONLY the run results (and what-if scenario comparisons, if given). Be concise (max 5 sentences), concrete, use ₹ and the numbers. If something is not in the results, say so. If asked for a calculation, show it as a small Markdown table (Step | Working | Result). Never use LaTeX; write formulas in plain text like "₹35 L × 3.25 = ₹113.75 L".' },
         { role: 'user', content: `Run results (JSON): ${JSON.stringify(body.context || {}).slice(0, 12000)}\n\nQuestion: ${q}` },
       ],
     });

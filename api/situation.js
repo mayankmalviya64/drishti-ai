@@ -51,9 +51,9 @@ export async function POST(request) {
       .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 3000) }));
     try {
       const { message, engine, usage } = await chat({
-        temperature: 0.3, maxTokens: 700, prefer,
+        temperature: 0.3, maxTokens: 1100, prefer,
         messages: [
-          { role: 'system', content: `${RULES}\nYou are now in a follow-up chat about the situation. Reply in at most 8 short lines or bullets. When the marketer asks what to do, split it into "Agent does now:" and "Needs you:". Mark guesses with "(assumed)".` },
+          { role: 'system', content: `${RULES}\nYou are now in a follow-up chat about the situation. Reply in at most 8 short lines or bullets (a calculation may use a small table instead). Format with Markdown: short "###" headings, "-" bullets, and a Markdown table for any step-by-step calculation (columns: Step | Working | Result | Source). NEVER use LaTeX; write formulas in plain text like "(₹113.75 L + ₹1.2 L × 7) ÷ ₹35 L ≈ 3.49". When the marketer asks what to do, split it into "Agent does now:" and "Needs you:". Mark guesses with "(assumed)".` },
           { role: 'user', content: `Brand: ${JSON.stringify(brand).slice(0, 3000)}\n\nSources:\n${listSources(sources)}\n\nSituation: ${text}` },
           ...history,
           { role: 'user', content: String(body.question).slice(0, 600) },

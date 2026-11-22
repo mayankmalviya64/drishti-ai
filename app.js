@@ -1119,6 +1119,71 @@ const lower1 = t => t.replace(/^(?!I\s)([A-Z])(?=[a-z\s])/, c => c.toLowerCase()
 const leadIf = t => lower1(String(t).trim().replace(/^if\s+/i, '').replace(/[,.]\s*$/, ''));
 const leadThen = t => lower1(String(t).trim().replace(/^(then\s+)?(we('| wi)ll|we)\s+/i, ''));
 
+// ---------------------------------------------------------------------------
+// AI REPLY FORMATTER: the AI answers in Markdown (tables, headings, bullets) and
+// sometimes LaTeX maths. This turns it into neat HTML: real tables, bold headings,
+// lists, and formulas written the plain way, e.g. "(₹113.75 L + ₹1.2 L × 7) ÷ ₹35 L ≈ 3.49".
+// Everything is escaped first, so the AI can never inject its own HTML.
+// `inline` formats one line (bold + citations); used for every piece of text.
+// ---------------------------------------------------------------------------
+function plainMath(t) {
+  // \text{…} first, so fractions are left with plain words inside their braces
+  let s = String(t).replace(/\\(?:text|mathrm|textbf|mathbf|operatorname)\s*\{([^{}]*)\}/g, '$1');
+  for (let i = 0; i < 4; i++) // nested fractions: run a few times, innermost first
+    s = s.replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, '($1) ÷ ($2)');
+  return s
+    .replace(/\\times/g, '×').replace(/\\cdot/g, '·').replace(/\\div/g, '÷').replace(/\\approx/g, '≈')
+    .replace(/\\leq?/g, '≤').replace(/\\geq?/g, '≥').replace(/\\neq/g, '≠').replace(/\\%/g, '%')
+    .replace(/\\(?:left|right)/g, '').replace(/\\[,;:! ]|\\quad|\\qquad/g, ' ')
+    .replace(/_\{([^{}]*)\}/g, ' $1').replace(/\^\{([^{}]*)\}/g, '^$1')
+    .replace(/\\₹/g, '₹').replace(/[{}]/g, '').replace(/\\/g, '')
+    .replace(/\(([^()]*)\)\s*÷\s*\(([^()]*)\)/g, (m, a, b) => `${/[+−-]/.test(a) ? `(${a.trim()})` : a.trim()} ÷ ${/[+−-]/.test(b) ? `(${b.trim()})` : b.trim()}`)
+    .replace(/÷\s*\(([^()+−×-]*)\)/g, '÷ $1')   // "÷ (₹35 L)" → "÷ ₹35 L"
+    .replace(/\s{2,}/g, ' ').trim();
+}
+function mdReply(text, sources = []) {
+  // 1) Formulas first: \[ … \] and $$ … $$ blocks become one plain line; \( … \) inline
+  let src = String(text || '')
+    .replace(/\\\[([\s\S]*?)\\\]|\$\$([\s\S]*?)\$\$/g, (_, a, b) => `\n@@MATH@@${plainMath(a ?? b).replace(/\n/g, ' ')}\n`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, a) => plainMath(a));
+  const inline = t => citeText(t, sources);           // escape + **bold** + [D1] tags
+  const lines = src.split('\n'), out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const ln = lines[i].trim();
+    if (!ln) { i++; continue; }
+    // Table: consecutive lines that start with "|"
+    if (ln.startsWith('|')) {
+      const rows = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) { rows.push(lines[i].trim()); i++; }
+      const cells = r => r.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      const body = rows.filter(r => !/^\|?\s*:?-{2,}/.test(r.replace(/\s/g, '').replace(/^\|/, '')) || /[a-z0-9₹]/i.test(r.replace(/[|:\-\s]/g, '')));
+      const [head, ...rest] = body;
+      out.push(`<div class="md-table"><table><tr>${cells(head).map(c => `<th>${inline(c)}</th>`).join('')}</tr>${rest.map(r => `<tr>${cells(r).map(c => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</table></div>`);
+      continue;
+    }
+    if (ln.startsWith('@@MATH@@')) { out.push(`<div class="md-math">${inline(ln.slice(8))}</div>`); i++; continue; }
+    // Headings: "# Title", or a line that is only **bold**
+    const h = ln.match(/^#{1,6}\s+(.*)$/) || ln.match(/^\*\*([^*]+)\*\*:?$/);
+    if (h) { out.push(`<h6 class="md-h">${inline(h[1])}</h6>`); i++; continue; }
+    // Lists: "- x" / "* x" / "• x" or "1. x"
+    const isUl = l => /^\s*[-*•]\s+/.test(l), isOl = l => /^\s*\d+[.)]\s+/.test(l);
+    if (isUl(ln) || isOl(ln)) {
+      const ol = isOl(ln), items = [];
+      while (i < lines.length && (ol ? isOl(lines[i]) : isUl(lines[i]))) { items.push(lines[i].replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '')); i++; }
+      out.push(`<${ol ? 'ol' : 'ul'} class="md-list">${items.map(x => `<li>${inline(x)}</li>`).join('')}</${ol ? 'ol' : 'ul'}>`);
+      continue;
+    }
+    if (/^[-*_]{3,}$/.test(ln)) { i++; continue; } // "---" divider lines
+    // Paragraph: join lines until a blank line or another block starts
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^(\||#|@@MATH@@|\s*[-*•]\s|\s*\d+[.)]\s)/.test(lines[i].trim())) { para.push(lines[i].trim()); i++; }
+    if (!para.length) { para.push(ln); i++; }
+    out.push(`<p>${inline(para.join(' '))}</p>`);
+  }
+  return `<div class="md">${out.join('')}</div>`;
+}
+
 // The answer card + the chat
 function renderSituation(s) {
   const src = s.sources || [], res = s.result;
@@ -1142,7 +1207,7 @@ function renderSituation(s) {
     ${src.some(x => x.kind === 'news') ? '' : '<p class="hint">No matching news found today, so only the brand\'s own data is cited.</p>'}
     <p class="hint">Answered by ${esc(s.by)} · ${new Date(s.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' })} IST</p>
     <h5>Continue the chat</h5>
-    <div class="cc-chat" id="ccChat">${(s.history || []).map(m => `<div class="msg ${m.role}">${m.role === 'user' ? esc(m.content) : citeText(m.content, src)}</div>`).join('')}</div>
+    <div class="cc-chat" id="ccChat">${(s.history || []).map(m => `<div class="msg ${m.role}">${m.role === 'user' ? esc(m.content) : mdReply(m.content, src)}</div>`).join('')}</div>
     <div class="chips" id="ccFollow">${['Which of these should the agents do right now?', 'Which ones need my decision, and what do I tell my boss?', ...(res.followUps || [])].map(q => `<button type="button">${esc(q)}</button>`).join('')}</div>
     <form class="ask" id="ccAskForm"><input class="field" id="ccAsk" placeholder="Ask a follow-up, e.g. what if returns are 20%?" autocomplete="off"><button class="btn" type="submit">Send</button></form>
     <div class="cc-actions"><button type="button" class="mini" id="ccToLoop">Also turn it into a data condition for the live loop</button></div>
@@ -1295,7 +1360,7 @@ $('#wiAskForm').onsubmit = async ev => {
       body: JSON.stringify({ question: q, context: { brand: state.whatIf.brand, whatIfScenarios: state.whatIf.rows,
         note: 'Each row is the same brand under a hypothetical condition. roasNow = true ROAS before fixes, roasNext = after the agents act, health = agent health index after fixes, auto/ask = actions done on their own / waiting for approval, storm = Storm Mode (big moves wait for a human).' } }) });
     const j = await res.json();
-    out.textContent = j.answer || j.error || 'No answer came back. Please try again.';
+    if (j.answer) out.innerHTML = mdReply(j.answer); else out.textContent = j.error || 'No answer came back. Please try again.';
     trackAI(j.usage, 'ask');
   } catch (e) { out.textContent = e.name === 'TimeoutError' ? 'The AI took too long. Please try again.' : 'Could not reach the Orchestrator. ' + e.message; }
 };
@@ -2700,7 +2765,7 @@ async function ask(ev) {
     const res = await fetch(API + '/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question: q, context, model: $('#modelPick').value || undefined }), signal: AbortSignal.timeout(30000) });
     const j = await res.json();
-    out.textContent = j.answer || j.error || 'No answer came back. Please try again.';
+    if (j.answer) out.innerHTML = mdReply(j.answer); else out.textContent = j.error || 'No answer came back. Please try again.';
     trackAI(j.usage, 'ask');
   } catch (e) {
     out.textContent = e.name === 'TimeoutError' ? 'The AI took too long to answer. Please try again in a moment.' : 'Could not reach the Orchestrator. ' + e.message;
