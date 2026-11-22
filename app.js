@@ -1084,16 +1084,17 @@ function situationLocally(text, r, facts, why) {
   const gap = r.impact.platformRoas - r.impact.trueRoasNow;
   return {
     by: `built-in rules (${why || 'AI not reachable'})`, title: 'Your situation: first read', real: false,
-    answer: `Read with this brand's own numbers: the platforms report ROAS ${r.impact.platformRoas} [${P}], but real Shopify orders give ${r.impact.trueRoasNow} [${T}] against a break-even of ${r.cohort?.breakevenRoas ?? 2} [${B}]. `
-      + (gap > 0.3 ? 'So part of the "profit" the dashboards show is over-claimed by the platforms. ' : '')
-      + `${r.cohort?.pctSpendLosing ?? 0}% of spend sits in pockets that lose money [${L}]. The AI was not reachable, so the details of your situation could not be read; treat this as a first read.`,
+    // Plain English (lib/style.js): few numbers, no jargon
+    answer: `The ad platforms say every ₹1 of ads brings back ₹${r.impact.platformRoas} [${P}], but real orders say about ₹${r.impact.trueRoasNow} [${T}]; we need at least ₹${r.cohort?.breakevenRoas ?? 2} just to not lose money [${B}]. `
+      + (gap > 0.3 ? 'So the dashboards make things look better than they are. ' : '')
+      + `About ${Math.round(r.cohort?.pctSpendLosing ?? 0)}% of ad money goes to places that lose money [${L}]. The AI was not reachable, so the details of your situation could not be read; treat this as a first read.`,
     assumptions: [
       { text: 'Details not given in the situation were not read (no AI), so it is treated as hypothetical and applied to all channels.', cite: [] },
       { text: `Costs besides ads (product, shipping, returns) are covered by the break-even ROAS of ${r.cohort?.breakevenRoas ?? 2} set on this page.`, cite: B },
     ],
     findings: [
-      { text: `Platforms claim ROAS ${r.impact.platformRoas}; Shopify orders say ${r.impact.trueRoasNow}.`, cite: [...P, ...T] },
-      { text: `${r.cohort?.pctSpendLosing ?? 0}% of spend is below break-even.`, cite: L },
+      { text: `Platforms claim ₹${r.impact.platformRoas} back per ₹1; real orders say ₹${r.impact.trueRoasNow}.`, cite: [...P, ...T] },
+      { text: `About ${Math.round(r.cohort?.pctSpendLosing ?? 0)}% of ad money is losing money.`, cite: L },
     ],
     doNow: r.actions.filter(a => a.tier === 'auto').slice(0, 4).map(a => ({ action: a.title, why: cut(a.detail || '', 200), cite: [] })),
     needsYou: [...r.actions.filter(a => a.tier === 'approval').slice(0, 3).map(a => ({ action: a.title, why: cut(a.detail || '', 200), cite: [] })),

@@ -9,6 +9,7 @@ import { chat, engineLabel, parseJSON } from '../lib/llm.js';
 import { searchNews } from '../lib/news.js';
 import { cleanDraft, draftLocally, DRAFT_LIMITS } from '../lib/scenarios.js';
 import { json, preflight, readBody } from '../lib/http.js';
+import { PLAIN_ENGLISH } from '../lib/style.js';
 
 export const OPTIONS = preflight;
 
@@ -39,7 +40,8 @@ export async function POST(request) {
  "effects": up to 4 of {"channel": one of the brand's channels or "", "region": one of the brand's regions or "", "campaign": a word from one of its campaign names or "", "cpm": ad-price multiplier ${L.cpm[0]}-${L.cpm[1]}, "ctr": click-rate multiplier ${L.ctr[0]}-${L.ctr[1]}, "cvr": sale-rate multiplier ${L.cvr[0]}-${L.cvr[1]}, "why": short reason},
  "rivals": up to 3 real competitor brands in this category in India (use names from the headlines or the brand's known rivals when they fit) as {"name", "strategy": what they are doing in this situation, "channel": one of the brand's channels where they push, "campaign": start with the exact theme (text before "·") of one of the brand's campaigns, then " · " and their angle, "engagement": their click rate as a fraction ${L.engagement[0]}-${L.engagement[1]}},
  "moves": 2-4 concrete responses for this brand (₹ amounts, channels, regions, creatives) that respect the marketer's rules and approvals.
-Use 1 for "no change". Be specific to India and to this brand. Do not invent headlines; if the news does not mention it, treat it as hypothetical.` },
+Use 1 for "no change". Be specific to India and to this brand. Do not invent headlines; if the news does not mention it, treat it as hypothetical.
+For the text people read (label, headline, note, strategy, moves): ${PLAIN_ENGLISH}` },
         { role: 'user', content: `Brand: ${JSON.stringify(brand).slice(0, 4000)}\n\nToday's headlines:\n${news.map(n => `- ${n.title} (${n.source})`).join('\n') || '- none found'}\n\nSituation: ${text}` },
       ],
     });

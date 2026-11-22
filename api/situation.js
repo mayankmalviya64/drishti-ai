@@ -15,6 +15,7 @@
 import { chat, engineLabel, parseJSON } from '../lib/llm.js';
 import { searchNews } from '../lib/news.js';
 import { json, preflight, readBody } from '../lib/http.js';
+import { PLAIN_ENGLISH } from '../lib/style.js';
 
 export const OPTIONS = preflight;
 
@@ -38,7 +39,9 @@ Money rules (always follow in any calculation):
 Action rules:
 - "doNow" = safe moves the agents can do right away on their own (small budget trims, pausing tired ads, drafting creatives, fixing tracking, pulling reports).
 - "needsYou" = anything that needs a human: big budget moves, pricing, stopping a whole channel, talking to a boss, finance or a partner, or anything risky or irreversible.
-Use ₹ and plain English. Be specific to the brand's channels, regions and campaigns.`;
+Be specific to the brand's channels, regions and campaigns.
+${PLAIN_ENGLISH}
+(JSON field names stay as given; only the text inside them follows this style. A calculation the marketer asks for may use numbers freely.)`;
 
 export async function POST(request) {
   let body;
