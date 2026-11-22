@@ -1375,8 +1375,14 @@ renderRules();
 // A miss is NOT final: while offline it checks again every 15 seconds, and as soon as
 // the server answers, AI, email and Telegram switch back on by themselves.
 let recheck = null;
+// One dropped connection (some Indian networks briefly reset vercel.app) should not
+// switch the AI off. So if the first try fails, wait 1 second and try once more.
+const pause = ms => new Promise(r => setTimeout(r, ms)); // real 1s pause (wait() above is for animations)
+const fetchTwice = (url, opts = {}, ms = 12000) =>
+  fetch(url, { ...opts, signal: AbortSignal.timeout(ms) })
+    .catch(() => pause(1000).then(() => fetch(url, { ...opts, signal: AbortSignal.timeout(ms) })));
 function checkServer(ms = 12000) {
-  return fetch(API + '/api/health', { signal: AbortSignal.timeout(ms) }).then(r => r.json()).then(h => {
+  return fetchTwice(API + '/api/health', {}, ms).then(r => r.json()).then(h => {
     state.engine = h.engine;
     state.models = h.models || [];
     if (state.offline) log('Server reachable again: AI, email and Telegram are back on.');
@@ -1738,10 +1744,12 @@ async function run() {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 10000);
       let res;
+      const go = () => fetch(API + '/api/run', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal,
+      });
       try {
-        res = await fetch(API + '/api/run', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal,
-        });
+        // If the connection drops (not a timeout), retry once after 1 second before giving up
+        res = await go().catch(e => (ctrl.signal.aborted ? Promise.reject(e) : pause(1000).then(go)));
       } catch {
         state.offline = true; renderModelPick();
         recheck ||= setInterval(() => checkServer(), 15000); // keep trying in the background
