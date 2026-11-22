@@ -1098,9 +1098,26 @@ function situationLocally(text, r, facts, why) {
     doNow: r.actions.filter(a => a.tier === 'auto').slice(0, 4).map(a => ({ action: a.title, why: cut(a.detail || '', 200), cite: [] })),
     needsYou: [...r.actions.filter(a => a.tier === 'approval').slice(0, 3).map(a => ({ action: a.title, why: cut(a.detail || '', 200), cite: [] })),
       { action: 'Confirm the situation and any cost details the agents cannot see (returns, COD cancellations, discounts, fixed costs).', why: 'They change whether the brand is really in profit.', cite: [] }],
+    leadership: [
+      { if: 'Costs the dashboard cannot see (returns, cancelled cash-on-delivery orders, discounts) push us into a loss',
+        then: `count them in and raise the break-even target above ${r.cohort?.breakevenRoas ?? 2}, so every ad must earn more to stay on.` },
+      { if: `Ad platforms keep claiming more sales than our real orders show (${r.impact.platformRoas} vs ${r.impact.trueRoasNow} per ₹1)`,
+        then: 'judge every ad only by real Shopify orders, never by the platforms\' own numbers.' },
+      { if: `Some ads keep losing money (${r.cohort?.pctSpendLosing ?? 0}% of spend today)`,
+        then: `pause them and move about ${inr(r.impact.freedPerDay)} a day to the ads that bring real orders.` },
+      { if: 'An ad gets tired and people stop clicking',
+        then: 'swap in fresh versions within a day instead of paying more for the same old ad.' },
+      { if: 'A big move is needed (a large budget shift, stopping a whole channel, price changes)',
+        then: 'have the agents prepare it, and a manager approves it before any money moves.' },
+    ],
     followUps: [],
   };
 }
+
+// Tidy the leadership lines: "If Costs…" → "If costs…", "We will pause…"/"We pause…" → "pause…"
+const lower1 = t => t.replace(/^(?!I\s)([A-Z])(?=[a-z\s])/, c => c.toLowerCase()); // keeps "I" and short forms like "ROAS"
+const leadIf = t => lower1(String(t).trim().replace(/^if\s+/i, '').replace(/[,.]\s*$/, ''));
+const leadThen = t => lower1(String(t).trim().replace(/^(then\s+)?(we('| wi)ll|we)\s+/i, ''));
 
 // The answer card + the chat
 function renderSituation(s) {
@@ -1116,6 +1133,9 @@ function renderSituation(s) {
       <div><h5>${ic('play')} Agent does now</h5><ul>${res.doNow.map(x => li(x, 'action')).join('') || '<li>Nothing safe to do on its own yet.</li>'}</ul></div>
       <div><h5>${ic('users')} Needs you</h5><ul>${res.needsYou.map(x => li(x, 'action')).join('') || '<li>Nothing needs you right now.</li>'}</ul></div>
     </div>
+    ${res.leadership?.length ? `<h5>For leadership: if this happens, we will do this</h5>
+    <ol class="cc-lead" id="ccLead">${res.leadership.map(x => `<li><b>If</b> ${esc(leadIf(x.if))}<br><b>→ We will</b> ${esc(leadThen(x.then))}</li>`).join('')}</ol>
+    <div class="cc-actions"><button type="button" class="mini" id="ccLeadCopy">Copy the 5 recommendations</button></div>` : ''}
     <h5>Sources</h5>
     <ol class="cc-src">${src.filter(x => x.kind === 'news').map(x => `<li id="src-${esc(x.id)}"><b>${esc(x.id)}</b> <a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a>${x.source ? ` <small>· ${esc(x.source)}${x.date ? ' · ' + esc(String(x.date).slice(0, 16)) : ''}</small>` : ''}</li>`).join('')}
       ${src.filter(x => x.kind === 'data').map(x => `<li id="src-${esc(x.id)}"><b>${esc(x.id)}</b> Drishti data · ${esc(x.title)}</li>`).join('')}</ol>
@@ -1130,6 +1150,13 @@ function renderSituation(s) {
   $$('#ccFollow button').forEach(b => b.onclick = () => { $('#ccAsk').value = b.textContent; situationChat(); });
   $('#ccAskForm').onsubmit = ev => { ev.preventDefault(); situationChat(); };
   $('#ccToLoop').onclick = () => $('#ccForm').requestSubmit(); // same as "Draft with today's news"
+  // Copy the leadership lines as plain text (ready for a slide or an email)
+  const copyBtn = $('#ccLeadCopy');
+  if (copyBtn) copyBtn.onclick = async () => {
+    const lines = res.leadership.map((x, i) => `${i + 1}. If ${leadIf(x.if)}, we will ${leadThen(x.then)}`).join('\n');
+    try { await navigator.clipboard.writeText(`${res.title}: what we will do\n${lines}`); copyBtn.textContent = 'Copied ✓'; }
+    catch { copyBtn.textContent = 'Copy blocked: select the list and copy'; }
+  };
   fillIcons();
 }
 

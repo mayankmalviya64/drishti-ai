@@ -821,3 +821,7 @@ footer.foot { text-align: center; font-size: 12px; color: var(--muted); padding:
 .cc-run .chips { margin-bottom: 8px; }
 .cc-run .ask .field { flex: 1; }
 .cc-run .hl { font-weight: 500; }
+/* Leadership: 5 "if this happens → we will do this" lines */
+.cc-lead { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.55; }
+.cc-lead li { margin-bottom: 8px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.cc-lead li::marker { color: var(--orange-ink); font-weight: 700; }

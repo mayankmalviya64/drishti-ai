@@ -75,7 +75,7 @@ export async function POST(request) {
   ];
   try {
     const { message, engine, usage } = await chat({
-      json: true, temperature: 0.35, maxTokens: 1800, prefer,
+      json: true, temperature: 0.35, maxTokens: 2300, prefer,
       messages: [
         { role: 'system', content: `${RULES}
 Return ONLY a JSON object:
@@ -86,6 +86,7 @@ Return ONLY a JSON object:
  "findings": 2-5 of {"text": what the brand's numbers say about this situation, "cite": [ids]},
  "doNow": 2-4 of {"action": concrete move, "why": short reason, "cite": [ids]},
  "needsYou": 1-4 of {"action": decision for the human, "why": short reason, "cite": [ids]},
+ "leadership": exactly 5 of {"if": a short trigger in simple English (what happens or what we find), "then": what we will do, in simple English with ₹ or % where useful} — written for senior leaders with no ad jargon (say "return on ad spend" not "ROAS"), each line under 25 words, ordered from most to least important,
  "followUps": 3 short follow-up questions the marketer might ask next}` },
         { role: 'user', content: `Brand: ${JSON.stringify(brand).slice(0, 3000)}\n\nSources:\n${listSources(sources)}\n\nSituation: ${text}` },
       ],
@@ -118,6 +119,8 @@ function clean(r, sources) {
     findings: list(r.findings, 5, a => ({ text: str(a.text ?? a), cite: cites(a.cite) })),
     doNow: list(r.doNow, 4, a => ({ action: str(a.action ?? a), why: str(a.why, 240), cite: cites(a.cite) })),
     needsYou: list(r.needsYou, 4, a => ({ action: str(a.action ?? a), why: str(a.why, 240), cite: cites(a.cite) })),
+    // 5 "If this happens → we will do this" lines for leadership
+    leadership: list(r.leadership, 5, a => ({ if: str(a.if ?? a.when, 200), then: str(a.then ?? a.do ?? a, 260) })),
     followUps: (Array.isArray(r.followUps) ? r.followUps : []).slice(0, 3).map(q => str(q, 120)).filter(Boolean),
   };
 }
