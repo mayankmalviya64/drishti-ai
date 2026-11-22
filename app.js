@@ -2220,7 +2220,7 @@ async function emailReport(done, waiting) {
   // Try each route in turn; the first one that works wins
   const status = await emailViaServer(to, subject, lines) || await emailViaFormSubmit(to, subject, lines) || {
     // Last resort: a link that opens the visitor's own email app with the report already written
-    ok: false, text: 'email service is down: open the report in your email app',
+    ok: false, text: 'could not reach the email service from this network: open the report in your email app',
     href: `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.map(([k, v]) => `${k}\n${v}`).join('\n\n'))}`,
   };
   mark(done, status);
@@ -2229,10 +2229,11 @@ async function emailReport(done, waiting) {
 
 // Route 1: our own backend (Gmail). Returns a status, or null if it can't send.
 async function emailViaServer(to, subject, lines) {
-  if (state.offline) return null;
+  // Even if the page marked the server offline earlier, still try: the network may be back.
+  // fetchTwice retries once after 1 second if the connection drops.
   try {
-    const res = await fetch(API + '/api/email', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, subject, lines }), signal: AbortSignal.timeout(10000) });
+    const res = await fetchTwice(API + '/api/email', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, subject, lines }) }, state.offline ? 6000 : 10000);
     const j = await res.json();
     return j.sent ? { ok: true, text: `report emailed to ${to}` } : null;
   } catch { return null; }
